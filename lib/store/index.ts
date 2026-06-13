@@ -11,8 +11,16 @@ import { blobStore } from "./blob";
 export * from "./types";
 
 function pickStore(): LedgerStore {
-  // Vercel injects BLOB_READ_WRITE_TOKEN when a Blob store is connected.
-  return process.env.BLOB_READ_WRITE_TOKEN ? blobStore : fsStore;
+  // Use Blob whenever a Blob store is connected. Connecting a store may expose
+  // any of these vars (BLOB_READ_WRITE_TOKEN isn't always present), so detect
+  // on any of them. Also: on Vercel the filesystem is read-only, so never fall
+  // back to the fs store there — Blob is the only viable backend.
+  const hasBlob =
+    !!process.env.BLOB_READ_WRITE_TOKEN ||
+    !!process.env.BLOB_STORE_ID ||
+    !!process.env.BLOB_WEBHOOK_PUBLIC_KEY;
+  const onVercel = !!process.env.VERCEL;
+  return hasBlob || onVercel ? blobStore : fsStore;
 }
 
 const store = pickStore();
