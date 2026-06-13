@@ -30,6 +30,7 @@ button {
   padding: 8px 12px;
 }
 button.primary { border-color: var(--accent); background: var(--accent); color: white; }
+button.danger { border-color: #e0b6ad; color: var(--bad); }
 button:disabled { opacity: 0.5; cursor: default; }
 
 input, select {

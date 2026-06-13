@@ -1,0 +1,423 @@
+"use client";
+
+import { useEffect, useState, useTransition } from "react";
+import {
+  getRegister,
+  getAccounts,
+  updateTransaction,
+  deleteTransaction,
+  type RegisterRowDTO,
+} from "./actions";
+
+function money(display: string): string {
+  if (!display) return "";
+  const neg = display.startsWith("-");
+  const [intPart, dec] = display.replace("-", "").split(".");
+  const withCommas = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return (neg ? "-$" : "$") + withCommas + "." + dec;
+}
+
+interface EditState {
+  date: string;
+  payee: string;
+  narration: string;
+  postings: { account: string; amount: string }[]; // amount signed: + debit, - credit
+}
+
+export default function RegisterView({
+  entityId,
+  accountsHint,
+  onChange,
+}: {
+  entityId: string;
+  accountsHint?: string[];
+  onChange?: () => void;
+}) {
+  const [filter, setFilter] = useState("");
+  const [rows, setRows] = useState<RegisterRowDTO[]>([]);
+  const [accounts, setAccounts] = useState<string[]>(accountsHint ?? []);
+  const [singleLine, setSingleLine] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [edit, setEdit] = useState<EditState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function refresh(f = filter) {
+    startTransition(async () => {
+      const reg = await getRegister(entityId, f);
+      setRows(reg.rows);
+      setAccounts(reg.accounts);
+    });
+  }
+
+  useEffect(() => {
+    getAccounts(entityId).then(setAccounts);
+    refresh(filter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityId]);
+
+  function changeFilter(f: string) {
+    setFilter(f);
+    setEditingId(null);
+    refresh(f);
+  }
+
+  function beginEdit(r: RegisterRowDTO) {
+    setError(null);
+    setEditingId(r.id);
+    setEdit({
+      date: r.date,
+      payee: r.payee,
+      narration: r.narration,
+      // signed amount: debit positive, credit negative
+      postings: r.postings.map((p) => ({
+        account: p.account,
+        amount: p.debitCents ? p.debit : "-" + p.credit,
+      })),
+    });
+  }
+
+  function setPosting(i: number, field: "account" | "amount", value: string) {
+    if (!edit) return;
+    const next = { ...edit, postings: edit.postings.map((p) => ({ ...p })) };
+    next.postings[i][field] = value;
+    setEdit(next);
+  }
+
+  function addPostingRow() {
+    if (!edit) return;
+    setEdit({ ...edit, postings: [...edit.postings, { account: accounts[0] || "", amount: "" }] });
+  }
+
+  function removePostingRow(i: number) {
+    if (!edit) return;
+    setEdit({ ...edit, postings: edit.postings.filter((_, j) => j !== i) });
+  }
+
+  function editSum(): number {
+    if (!edit) return 0;
+    return edit.postings.reduce((s, p) => {
+      const n = Number(String(p.amount).replace(/[$,()\s]/g, ""));
+      return s + (Number.isFinite(n) ? Math.round(n * 100) : 0);
+    }, 0);
+  }
+
+  function save() {
+    if (!edit || !editingId) return;
+    setError(null);
+    startTransition(async () => {
+      const res = await updateTransaction(entityId, editingId, {
+        date: edit.date,
+        payee: edit.payee,
+        narration: edit.narration,
+        postings: edit.postings,
+      });
+      if (!res.ok) {
+        setError(res.error || "Could not save");
+        return;
+      }
+      setEditingId(null);
+      setEdit(null);
+      refresh();
+      onChange?.();
+    });
+  }
+
+  function remove(id: string) {
+    setError(null);
+    startTransition(async () => {
+      const res = await deleteTransaction(entityId, id);
+      if (!res.ok) {
+        setError(res.error || "Could not delete");
+        return;
+      }
+      if (editingId === id) {
+        setEditingId(null);
+        setEdit(null);
+      }
+      refresh();
+      onChange?.();
+    });
+  }
+
+  const balanced = editSum() === 0;
+
+  return (
+    <div className="panel span-12">
+      <div className="reg-toolbar">
+        <h2 style={{ margin: 0 }}>Ledger</h2>
+        <div className="reg-controls">
+          <select value={filter} onChange={(e) => changeFilter(e.target.value)} style={{ width: 260 }}>
+            <option value="">All accounts</option>
+            {accounts.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={singleLine}
+              onChange={(e) => setSingleLine(e.target.checked)}
+            />
+            Single-line (Excel)
+          </label>
+        </div>
+      </div>
+
+      {error ? <div className="notice">{error}</div> : null}
+
+      {singleLine ? (
+        <table className="reg flat">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Payee</th>
+              <th>Memo</th>
+              <th>{filter ? "Account" : "Postings"}</th>
+              <th>{filter ? "Split / counter" : ""}</th>
+              <th className="amount">Debit</th>
+              <th className="amount">Credit</th>
+              {filter ? <th className="amount">Balance</th> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td className="muted" colSpan={filter ? 8 : 7}>
+                  No transactions
+                </td>
+              </tr>
+            ) : (
+              rows.map((r) => (
+                <tr key={r.id} onClick={() => beginEdit(r)} style={{ cursor: "pointer" }}>
+                  <td>{r.date}</td>
+                  <td>{r.payee}</td>
+                  <td>{r.narration}</td>
+                  <td>{filter ? filter : r.postings.map((p) => p.account).join(", ")}</td>
+                  <td>{filter ? r.counterLabel : ""}</td>
+                  <td className="amount">{filter ? money(r.filterDebit) : ""}</td>
+                  <td className="amount">{filter ? money(r.filterCredit) : ""}</td>
+                  {filter ? <td className="amount">{money(r.runningBalance)}</td> : null}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      ) : (
+        <table className="reg">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Payee / Memo</th>
+              <th>Account</th>
+              <th className="amount">Debit</th>
+              <th className="amount">Credit</th>
+              {filter ? <th className="amount">Balance</th> : null}
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td className="muted" colSpan={filter ? 7 : 6}>
+                  No transactions
+                </td>
+              </tr>
+            ) : (
+              rows.map((r) =>
+                editingId === r.id && edit ? (
+                  <EditRows
+                    key={r.id}
+                    edit={edit}
+                    accounts={accounts}
+                    filter={filter}
+                    balanced={balanced}
+                    sum={editSum()}
+                    pending={pending}
+                    onField={(f, v) => setEdit({ ...edit, [f]: v })}
+                    onPosting={setPosting}
+                    onAddPosting={addPostingRow}
+                    onRemovePosting={removePostingRow}
+                    onSave={save}
+                    onCancel={() => {
+                      setEditingId(null);
+                      setEdit(null);
+                      setError(null);
+                    }}
+                  />
+                ) : (
+                  <ViewRows key={r.id} r={r} filter={filter} onEdit={() => beginEdit(r)} onDelete={() => remove(r.id)} />
+                )
+              )
+            )}
+          </tbody>
+        </table>
+      )}
+
+      <style>{`
+        .reg-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
+        .reg-controls { display:flex; align-items:center; gap:14px; }
+        .toggle { display:flex; flex-direction:row; align-items:center; gap:6px; color:var(--ink); font-weight:600; }
+        .toggle input { width:auto; }
+        table.reg td, table.reg th { vertical-align: top; }
+        table.flat td { white-space: nowrap; }
+        .txgroup td { border-bottom: 0; }
+        .txgroup.last td { border-bottom: 1px solid var(--line); }
+        .editbar { display:flex; gap:8px; align-items:center; margin-top:8px; }
+      `}</style>
+    </div>
+  );
+}
+
+function ViewRows({
+  r,
+  filter,
+  onEdit,
+  onDelete,
+}: {
+  r: RegisterRowDTO;
+  filter: string;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const span = filter ? 7 : 6;
+  return (
+    <>
+      <tr className="txgroup">
+        <td>{r.date}</td>
+        <td>
+          <strong>{r.payee || "—"}</strong>
+          {r.narration ? <div className="muted">{r.narration}</div> : null}
+          {filter ? <div className="muted">Counter: {r.counterLabel}</div> : null}
+        </td>
+        <td>{r.postings[0]?.account}</td>
+        <td className="amount">{money(r.postings[0]?.debit)}</td>
+        <td className="amount">{money(r.postings[0]?.credit)}</td>
+        {filter ? <td className="amount">{money(r.runningBalance)}</td> : null}
+        <td className="amount">
+          <button onClick={onEdit}>Edit</button>
+        </td>
+      </tr>
+      {r.postings.slice(1).map((p, i) => {
+        const last = i === r.postings.length - 2;
+        return (
+          <tr key={i} className={"txgroup" + (last ? " last" : "")}>
+            <td></td>
+            <td></td>
+            <td>{p.account}</td>
+            <td className="amount">{money(p.debit)}</td>
+            <td className="amount">{money(p.credit)}</td>
+            {filter ? <td></td> : null}
+            <td className="amount">{last ? <button className="danger" onClick={onDelete}>Delete</button> : null}</td>
+          </tr>
+        );
+      })}
+    </>
+  );
+}
+
+function EditRows({
+  edit,
+  accounts,
+  filter,
+  balanced,
+  sum,
+  pending,
+  onField,
+  onPosting,
+  onAddPosting,
+  onRemovePosting,
+  onSave,
+  onCancel,
+}: {
+  edit: EditState;
+  accounts: string[];
+  filter: string;
+  balanced: boolean;
+  sum: number;
+  pending: boolean;
+  onField: (f: "date" | "payee" | "narration", v: string) => void;
+  onPosting: (i: number, field: "account" | "amount", v: string) => void;
+  onAddPosting: () => void;
+  onRemovePosting: (i: number) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const colSpan = filter ? 7 : 6;
+  return (
+    <>
+      <tr className="txgroup">
+        <td>
+          <input type="date" value={edit.date} onChange={(e) => onField("date", e.target.value)} />
+        </td>
+        <td colSpan={colSpan - 1}>
+          <input
+            placeholder="Payee"
+            value={edit.payee}
+            onChange={(e) => onField("payee", e.target.value)}
+            style={{ marginBottom: 6 }}
+          />
+          <input
+            placeholder="Memo / description"
+            value={edit.narration}
+            onChange={(e) => onField("narration", e.target.value)}
+          />
+        </td>
+      </tr>
+      {edit.postings.map((p, i) => (
+        <tr key={i} className="txgroup">
+          <td></td>
+          <td className="muted" style={{ fontSize: 11 }}>
+            {i === 0 ? "Postings (debit +, credit −):" : ""}
+          </td>
+          <td>
+            <select value={p.account} onChange={(e) => onPosting(i, "account", e.target.value)}>
+              {accounts.includes(p.account) ? null : <option value={p.account}>{p.account}</option>}
+              {accounts.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+          </td>
+          <td colSpan={filter ? 3 : 2}>
+            <input
+              type="number"
+              step="0.01"
+              placeholder="signed amount"
+              value={p.amount}
+              onChange={(e) => onPosting(i, "amount", e.target.value)}
+            />
+          </td>
+          <td className="amount">
+            {edit.postings.length > 2 ? (
+              <button onClick={() => onRemovePosting(i)} title="Remove posting">
+                ×
+              </button>
+            ) : null}
+          </td>
+        </tr>
+      ))}
+      <tr className="txgroup last">
+        <td></td>
+        <td colSpan={colSpan}>
+          <div className="editbar">
+            <button onClick={onAddPosting}>+ Add posting</button>
+            <span className={"pill " + (balanced ? "good" : "bad")}>
+              {balanced ? "balanced ✓" : "off by " + (sum / 100).toFixed(2)}
+            </span>
+            <span style={{ flex: 1 }} />
+            <button className="primary" onClick={onSave} disabled={pending || !balanced}>
+              {pending ? "Saving…" : "Save"}
+            </button>
+            <button onClick={onCancel} disabled={pending}>
+              Cancel
+            </button>
+          </div>
+        </td>
+      </tr>
+    </>
+  );
+}

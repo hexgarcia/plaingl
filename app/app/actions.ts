@@ -21,6 +21,8 @@ import {
   toCents,
   accountType,
   parsePaste,
+  ensureIds,
+  findById,
   type ReportLine,
   type AgingRow,
   type Transaction,
@@ -505,4 +507,193 @@ export async function commitImport(
 
   await saveLedgerText(id, next);
   return { ok: true, added: rows.length };
+}
+
+// ---- register (ledger with edit/filter/modes) -----------------------------
+
+export interface RegisterPostingDTO {
+  account: string;
+  debit: string; // formatted, "" if this leg is a credit
+  credit: string; // formatted, "" if this leg is a debit
+  debitCents: number;
+  creditCents: number;
+}
+
+export interface RegisterRowDTO {
+  id: string;
+  date: string;
+  payee: string;
+  narration: string;
+  postings: RegisterPostingDTO[];
+  /** For single-line view when filtered: the counter account or "— Split —". */
+  counterLabel: string;
+  /** Signed amount affecting the filtered account (cents), if filtered. */
+  filterDelta: number;
+  filterDebit: string; // formatted leg for the filtered account
+  filterCredit: string;
+  runningBalance: string; // formatted; "" when unfiltered
+}
+
+export interface RegisterDTO {
+  rows: RegisterRowDTO[];
+  accounts: string[];
+  filter: string; // "" = all
+}
+
+function postingDTO(account: string, cents: number): RegisterPostingDTO {
+  return {
+    account,
+    debit: cents > 0 ? fromCents(cents) : "",
+    credit: cents < 0 ? fromCents(-cents) : "",
+    debitCents: cents > 0 ? cents : 0,
+    creditCents: cents < 0 ? -cents : 0,
+  };
+}
+
+/**
+ * Build the register. If `filter` is a specific account, only transactions
+ * touching it are returned, with a running balance for that account and a
+ * counter-account label ("— Split —" when 2+ other postings).
+ */
+export async function getRegister(
+  id: string,
+  filter = ""
+): Promise<RegisterDTO> {
+  const text = await getLedgerText(id);
+  if (text == null) return { rows: [], accounts: [], filter };
+
+  const parsed = parse(text);
+  const ledger = parsed.ledger;
+  if (ensureIds(ledger)) {
+    // persist newly-assigned ids so they're stable on later reads
+    await saveLedgerText(id, serialize(ledger));
+  }
+
+  const accounts = ledger.directives
+    .filter((d): d is OpenDirective => d.kind === "open")
+    .map((d) => d.account)
+    .sort((a, b) => a.localeCompare(b));
+
+  const txns = ledger.directives
+    .filter((d): d is Transaction => d.kind === "transaction")
+    .filter((t) => !filter || t.postings.some((p) => p.account === filter));
+
+  // Running balance requires chronological order; compute then present newest first.
+  const chrono = [...txns].sort(
+    (a, b) => a.date.localeCompare(b.date) || (a.meta.id || "").localeCompare(b.meta.id || "")
+  );
+  const runningById = new Map<string, number>();
+  let running = 0;
+  if (filter) {
+    for (const t of chrono) {
+      const delta = t.postings
+        .filter((p) => p.account === filter)
+        .reduce((s, p) => s + p.amount, 0);
+      running += delta;
+      runningById.set(t.meta.id!, running);
+    }
+  }
+
+  const rows: RegisterRowDTO[] = chrono
+    .slice()
+    .reverse()
+    .map((t) => {
+      const others = filter
+        ? t.postings.filter((p) => p.account !== filter)
+        : t.postings;
+      const counterLabel =
+        others.length === 0
+          ? "—"
+          : others.length === 1
+          ? others[0].account
+          : "— Split —";
+      const filterLeg = filter
+        ? t.postings.filter((p) => p.account === filter).reduce((s, p) => s + p.amount, 0)
+        : 0;
+      return {
+        id: t.meta.id!,
+        date: t.date,
+        payee: t.payee,
+        narration: t.narration,
+        postings: t.postings.map((p) => postingDTO(p.account, p.amount)),
+        counterLabel,
+        filterDelta: filterLeg,
+        filterDebit: filterLeg > 0 ? fromCents(filterLeg) : "",
+        filterCredit: filterLeg < 0 ? fromCents(-filterLeg) : "",
+        runningBalance: filter ? fromCents(runningById.get(t.meta.id!) ?? 0) : "",
+      };
+    });
+
+  return { rows, accounts, filter };
+}
+
+export interface EditPosting {
+  account: string;
+  amount: string; // signed decimal string; + = debit, - = credit
+}
+
+/** Update a transaction in full. Postings must balance to zero to save. */
+export async function updateTransaction(
+  id: string,
+  txId: string,
+  data: { date: string; payee: string; narration: string; postings: EditPosting[] }
+): Promise<WriteResult> {
+  const text = await getLedgerText(id);
+  if (text == null) return { ok: false, error: "Entity not found" };
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data.date))
+    return { ok: false, error: "A valid date is required" };
+  const cleaned = data.postings
+    .map((p) => ({ account: p.account.trim(), cents: toCents(p.amount) }))
+    .filter((p) => p.account);
+  if (cleaned.length < 2)
+    return { ok: false, error: "At least two postings are required" };
+  for (const p of cleaned)
+    if (!accountType(p.account))
+      return { ok: false, error: "Invalid account root: " + p.account };
+  const sum = cleaned.reduce((s, p) => s + p.cents, 0);
+  if (sum !== 0)
+    return { ok: false, error: "Postings must balance to zero (off by " + fromCents(sum) + ")" };
+
+  const { ledger, errors: pre } = parse(text);
+  if (pre.length)
+    return { ok: false, error: "Ledger has issues; refusing to write: " + pre[0].message };
+  ensureIds(ledger);
+
+  const tx = findById(ledger, txId);
+  if (!tx) return { ok: false, error: "Transaction not found" };
+
+  const currency = ledger.options.operating_currency || "USD";
+  cleaned.forEach((p) => ensureOpen(ledger, p.account, currency));
+  tx.date = data.date;
+  tx.payee = data.payee;
+  tx.narration = data.narration;
+  tx.postings = cleaned.map((p) => ({ account: p.account, amount: p.cents, currency }));
+
+  const next = serialize(ledger);
+  const { errors: post } = parse(next);
+  if (post.length) return { ok: false, error: "Validation failed: " + post[0].message };
+
+  await saveLedgerText(id, next);
+  return { ok: true };
+}
+
+export async function deleteTransaction(
+  id: string,
+  txId: string
+): Promise<WriteResult> {
+  const text = await getLedgerText(id);
+  if (text == null) return { ok: false, error: "Entity not found" };
+  const { ledger, errors: pre } = parse(text);
+  if (pre.length)
+    return { ok: false, error: "Ledger has issues; refusing to write: " + pre[0].message };
+  ensureIds(ledger);
+  const before = ledger.directives.length;
+  ledger.directives = ledger.directives.filter(
+    (d) => !(d.kind === "transaction" && d.meta.id === txId)
+  );
+  if (ledger.directives.length === before)
+    return { ok: false, error: "Transaction not found" };
+  await saveLedgerText(id, serialize(ledger));
+  return { ok: true };
 }

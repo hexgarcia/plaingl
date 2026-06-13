@@ -1,22 +1,11 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import {
-  addTransaction,
-  getAccounts,
-  getRecentTransactions,
-  type LedgerTxnDTO,
-} from "./actions";
+import { addTransaction, getAccounts } from "./actions";
+import RegisterView from "./RegisterView";
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-function money(display: string): string {
-  const neg = display.startsWith("-");
-  const [intPart, dec] = display.replace("-", "").split(".");
-  const withCommas = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return (neg ? "-$" : "$") + withCommas + "." + dec;
 }
 
 export default function DataEntryView({
@@ -27,7 +16,7 @@ export default function DataEntryView({
   onChange?: () => void;
 }) {
   const [accounts, setAccounts] = useState<string[]>([]);
-  const [recent, setRecent] = useState<LedgerTxnDTO[]>([]);
+  const [registerVersion, setRegisterVersion] = useState(0);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
@@ -41,12 +30,8 @@ export default function DataEntryView({
 
   function refresh() {
     startTransition(async () => {
-      const [accs, txns] = await Promise.all([
-        getAccounts(entityId),
-        getRecentTransactions(entityId),
-      ]);
+      const accs = await getAccounts(entityId);
       setAccounts(accs);
-      setRecent(txns);
       setDebit((d) => d || accs.find((a) => a.startsWith("Expenses")) || accs[0] || "");
       setCredit((c) => c || accs.find((a) => a.startsWith("Assets")) || accs[0] || "");
     });
@@ -77,8 +62,7 @@ export default function DataEntryView({
       setPayee("");
       setNarration("");
       setAmount("");
-      const txns = await getRecentTransactions(entityId);
-      setRecent(txns);
+      setRegisterVersion((v) => v + 1);
       onChange?.();
     });
   }
@@ -156,43 +140,15 @@ export default function DataEntryView({
         </div>
       </div>
 
-      <div className="panel span-12">
-        <h2>Ledger</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Payee</th>
-              <th>Description</th>
-              <th>Postings</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recent.length === 0 ? (
-              <tr>
-                <td className="muted" colSpan={4}>
-                  No transactions yet
-                </td>
-              </tr>
-            ) : (
-              recent.map((t, i) => (
-                <tr key={i}>
-                  <td>{t.date}</td>
-                  <td>{t.payee}</td>
-                  <td>{t.narration}</td>
-                  <td>
-                    {t.postings.map((p, j) => (
-                      <div key={j}>
-                        {p.account} {money(p.display)}
-                      </div>
-                    ))}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <RegisterView
+        key={entityId + ":" + registerVersion}
+        entityId={entityId}
+        accountsHint={accounts}
+        onChange={() => {
+          setRegisterVersion((v) => v + 1);
+          onChange?.();
+        }}
+      />
     </div>
   );
 }
