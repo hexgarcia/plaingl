@@ -6,6 +6,7 @@ import { parse } from "./parse";
 import { serialize } from "./serialize";
 import { balanceSheet, incomeStatement, aging, totals } from "./report";
 import { toCents, fromCents } from "./types";
+import { parsePaste, normalizeDate } from "./import";
 
 const SAMPLE = `option "title" "Acme Co"
 option "operating_currency" "USD"
@@ -130,6 +131,48 @@ test("A/P aging flips sign on the liability control account", () => {
   });
   assert.equal(ap.total.total, 30000); // owe 300.00, positive after flip
   assert.equal(ap.rows[0].party, "Office Supply Co");
+});
+
+test("parsePaste handles TSV with headers", () => {
+  const text = [
+    "Date\tPayee\tDescription\tAmount\tAccount\tOffset",
+    "2026-01-05\tClient A\tInvoice\t1500\tAssets:Bank:Checking\tIncome:Sales",
+    "01/06/2026\tStaples\tPens\t(25.50)\tExpenses:Office\tAssets:Bank:Checking",
+  ].join("\n");
+  const rows = parsePaste(text, { account: "Assets:Bank:Checking", offset: "Expenses:Uncategorized" });
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].date, "2026-01-05");
+  assert.equal(rows[0].amountCents, 150000);
+  assert.equal(rows[0].account, "Assets:Bank:Checking");
+  assert.equal(rows[1].date, "2026-01-06"); // M/D/Y normalized
+  assert.equal(rows[1].amountCents, -2550); // parens = negative
+});
+
+test("parsePaste reads positional columns when no header", () => {
+  const text = "2026-02-01,Acme,Payment,800,Assets:Bank:Checking,Income:Sales";
+  const rows = parsePaste(text, { account: "X:Y", offset: "X:Z" });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].payee, "Acme");
+  assert.equal(rows[0].amountCents, 80000);
+});
+
+test("parsePaste drops rows with no date or zero amount, applies defaults", () => {
+  const text = [
+    "Date\tAmount",
+    "\t100",          // no date -> dropped
+    "2026-03-01\t0",  // zero amount -> dropped
+    "2026-03-02\t50", // kept, uses defaults for accounts
+  ].join("\n");
+  const rows = parsePaste(text, { account: "Assets:Bank", offset: "Expenses:Uncategorized" });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].account, "Assets:Bank");
+  assert.equal(rows[0].offset, "Expenses:Uncategorized");
+});
+
+test("normalizeDate handles ISO and M/D/Y, rejects junk", () => {
+  assert.equal(normalizeDate("2026-05-09"), "2026-05-09");
+  assert.equal(normalizeDate("5/9/26"), "2026-05-09");
+  assert.equal(normalizeDate("nonsense"), "");
 });
 
 test("serialize -> parse round-trips and still balances", () => {

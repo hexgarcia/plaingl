@@ -20,11 +20,13 @@ import {
   fromCents,
   toCents,
   accountType,
+  parsePaste,
   type ReportLine,
   type AgingRow,
   type Transaction,
   type OpenDirective,
   type Ledger,
+  type ImportRow,
 } from "@/lib/beancount";
 
 function today(): string {
@@ -417,4 +419,90 @@ export async function removeAccount(
   const next = serialize(ledger);
   await saveLedgerText(id, next);
   return { ok: true };
+}
+
+// ---- paste import ---------------------------------------------------------
+
+export interface ImportPreviewRowDTO {
+  date: string;
+  payee: string;
+  narration: string;
+  amount: string; // formatted
+  account: string;
+  offset: string;
+}
+
+export interface ImportPreviewDTO {
+  rows: ImportPreviewRowDTO[];
+  count: number;
+}
+
+export async function previewImport(
+  text: string,
+  defaults: { account: string; offset: string }
+): Promise<ImportPreviewDTO> {
+  const rows = parsePaste(text, defaults);
+  return {
+    count: rows.length,
+    rows: rows.map((r) => ({
+      date: r.date,
+      payee: r.payee,
+      narration: r.narration,
+      amount: fromCents(r.amountCents),
+      account: r.account,
+      offset: r.offset,
+    })),
+  };
+}
+
+export async function commitImport(
+  id: string,
+  text: string,
+  defaults: { account: string; offset: string }
+): Promise<WriteResult & { added?: number }> {
+  const ledgerText = await getLedgerText(id);
+  if (ledgerText == null) return { ok: false, error: "Entity not found" };
+
+  const rows: ImportRow[] = parsePaste(text, defaults);
+  if (!rows.length) return { ok: false, error: "No valid rows to import" };
+
+  const { ledger, errors: pre } = parse(ledgerText);
+  if (pre.length)
+    return { ok: false, error: "Ledger has issues; refusing to write: " + pre[0].message };
+
+  const currency = ledger.options.operating_currency || "USD";
+  for (const r of rows) {
+    if (!accountType(r.account) || !accountType(r.offset))
+      return {
+        ok: false,
+        error:
+          "Row '" +
+          r.narration +
+          "' has an account without a valid root: " +
+          r.account +
+          " / " +
+          r.offset,
+      };
+    ensureOpen(ledger, r.account, currency);
+    ensureOpen(ledger, r.offset, currency);
+    ledger.directives.push({
+      kind: "transaction",
+      date: r.date,
+      flag: "*",
+      payee: r.payee,
+      narration: r.narration,
+      meta: {},
+      postings: [
+        { account: r.account, amount: r.amountCents, currency },
+        { account: r.offset, amount: -r.amountCents, currency },
+      ],
+    } as Transaction);
+  }
+
+  const next = serialize(ledger);
+  const { errors: post } = parse(next);
+  if (post.length) return { ok: false, error: "Validation failed: " + post[0].message };
+
+  await saveLedgerText(id, next);
+  return { ok: true, added: rows.length };
 }
