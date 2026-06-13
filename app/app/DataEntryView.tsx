@@ -1,0 +1,198 @@
+"use client";
+
+import { useEffect, useState, useTransition } from "react";
+import {
+  addTransaction,
+  getAccounts,
+  getRecentTransactions,
+  type LedgerTxnDTO,
+} from "./actions";
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function money(display: string): string {
+  const neg = display.startsWith("-");
+  const [intPart, dec] = display.replace("-", "").split(".");
+  const withCommas = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return (neg ? "-$" : "$") + withCommas + "." + dec;
+}
+
+export default function DataEntryView({
+  entityId,
+  onChange,
+}: {
+  entityId: string;
+  onChange?: () => void;
+}) {
+  const [accounts, setAccounts] = useState<string[]>([]);
+  const [recent, setRecent] = useState<LedgerTxnDTO[]>([]);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
+
+  const [date, setDate] = useState(todayISO());
+  const [payee, setPayee] = useState("");
+  const [narration, setNarration] = useState("");
+  const [debit, setDebit] = useState("");
+  const [credit, setCredit] = useState("");
+  const [amount, setAmount] = useState("");
+
+  function refresh() {
+    startTransition(async () => {
+      const [accs, txns] = await Promise.all([
+        getAccounts(entityId),
+        getRecentTransactions(entityId),
+      ]);
+      setAccounts(accs);
+      setRecent(txns);
+      setDebit((d) => d || accs.find((a) => a.startsWith("Expenses")) || accs[0] || "");
+      setCredit((c) => c || accs.find((a) => a.startsWith("Assets")) || accs[0] || "");
+    });
+  }
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityId]);
+
+  function submit() {
+    setError(null);
+    setOkMsg(null);
+    startTransition(async () => {
+      const res = await addTransaction(entityId, {
+        date,
+        payee,
+        narration,
+        debitAccount: debit,
+        creditAccount: credit,
+        amount,
+      });
+      if (!res.ok) {
+        setError(res.error || "Could not save");
+        return;
+      }
+      setOkMsg("Transaction added.");
+      setPayee("");
+      setNarration("");
+      setAmount("");
+      const txns = await getRecentTransactions(entityId);
+      setRecent(txns);
+      onChange?.();
+    });
+  }
+
+  return (
+    <div className="grid">
+      <div className="panel span-12">
+        <h2>Basic data entry</h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Adds a balanced two-posting transaction. The full ledger is validated
+          by the Beancount engine before anything is saved.
+        </p>
+        {error ? <div className="notice">{error}</div> : null}
+        {okMsg ? (
+          <div className="notice" style={{ borderColor: "var(--accent)", background: "#e7f1ec", color: "#1c4d3e" }}>
+            {okMsg}
+          </div>
+        ) : null}
+        <div className="form-grid">
+          <label>
+            Date
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </label>
+          <label className="wide">
+            Payee
+            <input
+              placeholder="Customer, vendor, bank"
+              value={payee}
+              onChange={(e) => setPayee(e.target.value)}
+            />
+          </label>
+          <label className="wide">
+            Description
+            <input
+              placeholder="What happened"
+              value={narration}
+              onChange={(e) => setNarration(e.target.value)}
+            />
+          </label>
+          <label>
+            Amount
+            <input
+              type="number"
+              step="0.01"
+              placeholder="125.00"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </label>
+          <label className="wide">
+            Debit (first posting)
+            <select value={debit} onChange={(e) => setDebit(e.target.value)}>
+              {accounts.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="wide">
+            Credit (offset)
+            <select value={credit} onChange={(e) => setCredit(e.target.value)}>
+              {accounts.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="wide">
+            <button className="primary" onClick={submit} disabled={pending}>
+              {pending ? "Saving…" : "Add balanced transaction"}
+            </button>
+          </label>
+        </div>
+      </div>
+
+      <div className="panel span-12">
+        <h2>Ledger</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Payee</th>
+              <th>Description</th>
+              <th>Postings</th>
+            </tr>
+          </thead>
+          <tbody>
+            {recent.length === 0 ? (
+              <tr>
+                <td className="muted" colSpan={4}>
+                  No transactions yet
+                </td>
+              </tr>
+            ) : (
+              recent.map((t, i) => (
+                <tr key={i}>
+                  <td>{t.date}</td>
+                  <td>{t.payee}</td>
+                  <td>{t.narration}</td>
+                  <td>
+                    {t.postings.map((p, j) => (
+                      <div key={j}>
+                        {p.account} {money(p.display)}
+                      </div>
+                    ))}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

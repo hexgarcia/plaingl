@@ -12,13 +12,19 @@ import {
 } from "@/lib/store/fs";
 import {
   parse,
+  serialize,
   incomeStatement,
   balanceSheet,
   aging,
   totals,
   fromCents,
+  toCents,
+  accountType,
   type ReportLine,
   type AgingRow,
+  type Transaction,
+  type OpenDirective,
+  type Ledger,
 } from "@/lib/beancount";
 
 function today(): string {
@@ -151,4 +157,140 @@ export async function getReports(
     arAging: { rows: ar.rows.map(agingDTO), total: agingDTO(ar.total) },
     apAging: { rows: ap.rows.map(agingDTO), total: agingDTO(ap.total) },
   };
+}
+
+// ---- write path -----------------------------------------------------------
+
+/** Account names declared in the ledger (from `open` directives), sorted. */
+export async function getAccounts(id: string): Promise<string[]> {
+  const text = await getLedgerText(id);
+  if (text == null) return [];
+  const { ledger } = parse(text);
+  return ledger.directives
+    .filter((d): d is OpenDirective => d.kind === "open")
+    .map((d) => d.account)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+export interface NewTransaction {
+  date: string;
+  payee: string;
+  narration: string;
+  debitAccount: string; // receives +amount
+  creditAccount: string; // receives -amount
+  amount: string; // decimal string, e.g. "125.00"
+  currency?: string;
+}
+
+export interface WriteResult {
+  ok: boolean;
+  error?: string;
+}
+
+/** Ensure an account has an `open` directive; add one if missing. */
+function ensureOpen(ledger: Ledger, account: string, currency: string): void {
+  if (!account) return;
+  const exists = ledger.directives.some(
+    (d) => d.kind === "open" && d.account === account
+  );
+  if (exists) return;
+  const open: OpenDirective = {
+    kind: "open",
+    date: "1970-01-01",
+    account,
+    currencies: [currency],
+  };
+  ledger.directives.push(open);
+}
+
+/**
+ * Append a balanced two-posting transaction to the ledger, validating the
+ * whole ledger through the engine BEFORE saving. Never writes an invalid or
+ * unbalanced ledger to disk. This is the template every document write
+ * (invoices, bills, payments) will follow.
+ */
+export async function addTransaction(
+  id: string,
+  tx: NewTransaction
+): Promise<WriteResult> {
+  const text = await getLedgerText(id);
+  if (text == null) return { ok: false, error: "Entity not found" };
+
+  // basic input validation
+  if (!tx.date || !/^\d{4}-\d{2}-\d{2}$/.test(tx.date))
+    return { ok: false, error: "A valid date is required" };
+  if (!tx.debitAccount || !tx.creditAccount)
+    return { ok: false, error: "Both accounts are required" };
+  if (tx.debitAccount === tx.creditAccount)
+    return { ok: false, error: "Debit and credit accounts must differ" };
+  if (!accountType(tx.debitAccount) || !accountType(tx.creditAccount))
+    return { ok: false, error: "Accounts must start with a valid root (Assets, Liabilities, …)" };
+  const cents = toCents(tx.amount);
+  if (cents === 0) return { ok: false, error: "Amount must be non-zero" };
+
+  const currency = tx.currency || "USD";
+  const { ledger, errors: preErrors } = parse(text);
+  if (preErrors.length)
+    return {
+      ok: false,
+      error: "Existing ledger has issues; refusing to write: " + preErrors[0].message,
+    };
+
+  ensureOpen(ledger, tx.debitAccount, currency);
+  ensureOpen(ledger, tx.creditAccount, currency);
+
+  const directive: Transaction = {
+    kind: "transaction",
+    date: tx.date,
+    flag: "*",
+    payee: tx.payee || "",
+    narration: tx.narration || "",
+    meta: {},
+    postings: [
+      { account: tx.debitAccount, amount: cents, currency },
+      { account: tx.creditAccount, amount: -cents, currency },
+    ],
+  };
+  ledger.directives.push(directive);
+
+  // Re-serialize and re-parse to validate the FULL ledger before saving.
+  const nextText = serialize(ledger);
+  const { errors: postErrors } = parse(nextText);
+  if (postErrors.length)
+    return { ok: false, error: "Validation failed: " + postErrors[0].message };
+
+  await saveLedgerText(id, nextText);
+  return { ok: true };
+}
+
+export interface LedgerTxnDTO {
+  date: string;
+  payee: string;
+  narration: string;
+  postings: { account: string; display: string }[];
+}
+
+/** Recent transactions (newest first) for the ledger view. */
+export async function getRecentTransactions(
+  id: string,
+  limit = 25
+): Promise<LedgerTxnDTO[]> {
+  const text = await getLedgerText(id);
+  if (text == null) return [];
+  const { ledger } = parse(text);
+  const txns = ledger.directives.filter(
+    (d): d is Transaction => d.kind === "transaction"
+  );
+  return txns
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, limit)
+    .map((t) => ({
+      date: t.date,
+      payee: t.payee,
+      narration: t.narration,
+      postings: t.postings.map((p) => ({
+        account: p.account,
+        display: fromCents(p.amount),
+      })),
+    }));
 }

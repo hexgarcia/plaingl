@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { addEntity, type EntitySummary } from "./actions";
 import ReportsView from "./ReportsView";
+import DataEntryView from "./DataEntryView";
 
 const TABS = ["Reports", "Data entry", "Chart", "Paste import", "Export"] as const;
 type Tab = (typeof TABS)[number];
@@ -12,6 +13,8 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
   const [activeId, setActiveId] = useState<string>(initialEntities[0]?.id ?? "");
   const [tab, setTab] = useState<Tab>("Reports");
   const [newName, setNewName] = useState("");
+  // Bumped after any write so the Reports view refetches when revisited.
+  const [dataVersion, setDataVersion] = useState(0);
 
   const active = entities.find((e) => e.id === activeId);
 
@@ -81,7 +84,9 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
             <p className="muted">Create an entity to get started.</p>
           </div>
         ) : tab === "Reports" ? (
-          <ReportsView entityId={active.id} />
+          <ReportsView key={active.id + ":" + dataVersion} entityId={active.id} />
+        ) : tab === "Data entry" ? (
+          <DataEntryView entityId={active.id} onChange={() => setDataVersion((v) => v + 1)} />
         ) : (
           <div className="panel">
             <h2>{tab}</h2>
