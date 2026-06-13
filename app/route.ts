@@ -358,6 +358,23 @@ const html = `<!doctype html>
               <table><tbody id="balanceRows"></tbody></table>
             </div>
             <div class="panel span-12">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+                <h2 style="margin:0">A/R &amp; A/P aging</h2>
+                <span id="engineStatus" class="pill">engine: idle</span>
+              </div>
+              <p class="muted" style="margin-top:0">Computed server-side by the Beancount engine from your ledger. Aged by invoice/bill due date.</p>
+              <h3>Accounts receivable</h3>
+              <table>
+                <thead><tr><th>Customer</th><th class="amount">Current</th><th class="amount">1–30</th><th class="amount">31–60</th><th class="amount">61–90</th><th class="amount">90+</th><th class="amount">Total</th></tr></thead>
+                <tbody id="arAgingRows"></tbody>
+              </table>
+              <h3 style="margin-top:16px">Accounts payable</h3>
+              <table>
+                <thead><tr><th>Vendor</th><th class="amount">Current</th><th class="amount">1–30</th><th class="amount">31–60</th><th class="amount">61–90</th><th class="amount">90+</th><th class="amount">Total</th></tr></thead>
+                <tbody id="apAgingRows"></tbody>
+              </table>
+            </div>
+            <div class="panel span-12">
               <h2>Recent transactions</h2>
               <table>
                 <thead><tr><th>Date</th><th>Payee</th><th>Narration</th><th>Postings</th></tr></thead>
@@ -707,6 +724,8 @@ const html = `<!doctype html>
           + row("Current earnings", currentEarnings, e.currency)
           + row("Total liabilities + equity", totalLiabEquity, e.currency, true);
         byId("recentRows").innerHTML = filteredTransactions.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12).map(txRow).join("");
+        // Engine-backed aging + balance verification (server-side, async).
+        refreshEngineReports(e);
       }
 
       function reportRows(e, types, range = {}) {
@@ -731,18 +750,80 @@ const html = `<!doctype html>
         byId("ledgerRows").innerHTML = e.transactions.slice().sort((a, b) => b.date.localeCompare(a.date)).map((tx) => txRow(tx, true)).join("");
       }
 
-      function renderExport(e) {
+      // Build the ledger as Beancount text. Shared by the Export tab and the
+      // server-side report engine so both see identical input. Emits optional
+      // customer/vendor/due metadata when present so aging can bucket by party.
+      function buildBeancount(e) {
         const lines = ['option "title" "' + e.name.replaceAll('"', "'") + '"', 'option "operating_currency" "' + e.currency + '"', ""];
         e.accounts.forEach((account) => lines.push("1970-01-01 open " + account.name + " " + account.currency));
         lines.push("");
         e.transactions.slice().sort((a, b) => a.date.localeCompare(b.date)).forEach((tx) => {
           lines.push(tx.date + ' * "' + clean(tx.payee) + '" "' + clean(tx.narration) + '"');
+          if (tx.customer) lines.push('  customer: "' + clean(tx.customer) + '"');
+          if (tx.vendor) lines.push('  vendor: "' + clean(tx.vendor) + '"');
+          if (tx.due) lines.push('  due: "' + clean(tx.due) + '"');
           tx.postings.forEach((posting) => {
             lines.push("  " + posting.account.padEnd(34, " ") + " " + Number(posting.amount).toFixed(2) + " " + tx.currency);
           });
           lines.push("");
         });
-        byId("beancountExport").textContent = lines.join("\\n");
+        return lines.join("\\n");
+      }
+
+      function renderExport(e) {
+        byId("beancountExport").textContent = buildBeancount(e);
+      }
+
+      // Call the server-side Beancount engine and render engine-backed aging +
+      // a balance-check badge. Non-blocking: failures degrade gracefully.
+      let engineSeq = 0;
+      async function refreshEngineReports(e) {
+        const seq = ++engineSeq;
+        const status = byId("engineStatus");
+        if (status) { status.textContent = "engine: computing…"; status.style.color = ""; }
+        try {
+          const range = reportRange();
+          const res = await fetch("/api/reports", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              beancount: buildBeancount(e),
+              from: range.from || undefined,
+              to: range.to || undefined
+            })
+          });
+          if (seq !== engineSeq) return; // a newer request superseded this one
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          const data = await res.json();
+          renderAging("arAgingRows", data.aging.ar.rows, data.aging.ar.total);
+          renderAging("apAgingRows", data.aging.ap.rows, data.aging.ap.total);
+          const balanced = data.balanceSheet.balances;
+          if (status) {
+            status.textContent = balanced ? "engine: balanced ✓" : "engine: OUT OF BALANCE";
+            status.style.color = balanced ? "var(--accent)" : "var(--bad)";
+          }
+        } catch (err) {
+          if (seq !== engineSeq) return;
+          if (status) { status.textContent = "engine: unavailable"; status.style.color = "var(--muted)"; }
+        }
+      }
+
+      function renderAging(tbodyId, rows, total) {
+        const body = byId(tbodyId);
+        if (!body) return;
+        const cell = (s) => '<td class="amount">' + esc(s) + '</td>';
+        const line = (r, strong) => {
+          const open = strong ? "<strong>" : "";
+          const close = strong ? "</strong>" : "";
+          return '<tr><td>' + open + esc(r.party) + close + '</td>'
+            + cell(r.current) + cell(r.d1_30) + cell(r.d31_60) + cell(r.d61_90) + cell(r.d90_plus)
+            + '<td class="amount">' + open + esc(r.total) + close + '</td></tr>';
+        };
+        if (!rows.length) {
+          body.innerHTML = '<tr><td class="muted" colspan="7">Nothing outstanding</td></tr>';
+          return;
+        }
+        body.innerHTML = rows.map((r) => line(r, false)).join("") + line(total, true);
       }
 
       function txRow(tx, removable = false) {
