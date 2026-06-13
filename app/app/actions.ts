@@ -9,7 +9,7 @@ import {
   loadEntity,
   saveEntity,
   createEntity,
-} from "@/lib/store/fs";
+} from "@/lib/store";
 import {
   parse,
   serialize,
