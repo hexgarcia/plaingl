@@ -608,12 +608,23 @@ const html = `<!doctype html>
         };
       }
 
+      // Sum in integer minor units (cents) to avoid floating-point drift,
+      // then convert back to dollars at the end. Keeps stored postings as
+      // decimals while making aggregation exact.
+      function cents(value) {
+        return Math.round(Number(value || 0) * 100);
+      }
+
       function balances(e = entity(), range = {}) {
         const result = Object.fromEntries(e.accounts.map((account) => [account.name, 0]));
         e.transactions.filter((tx) => inRange(tx, range.from, range.to)).forEach((tx) => {
           tx.postings.forEach((posting) => {
-            result[posting.account] = (result[posting.account] || 0) + Number(posting.amount || 0);
+            result[posting.account] = (result[posting.account] || 0) + cents(posting.amount);
           });
+        });
+        // Convert accumulated cents back to dollars.
+        Object.keys(result).forEach((account) => {
+          result[account] = result[account] / 100;
         });
         return result;
       }
@@ -622,7 +633,7 @@ const html = `<!doctype html>
         const b = balances(e, range);
         const totalFor = (root) => Object.entries(b)
           .filter(([account]) => accountType(account) === root)
-          .reduce((sum, [, value]) => sum + value, 0);
+          .reduce((sum, [, value]) => sum + cents(value), 0) / 100;
         const revenue = -totalFor("Income");
         const expenses = totalFor("Expenses");
         return {
@@ -684,8 +695,17 @@ const html = `<!doctype html>
         byId("mNetIncome").textContent = money(periodTotals.netIncome, e.currency);
         byId("incomeRows").innerHTML = reportRows(e, ["Income", "Expenses"], range)
           + row("Net income", periodTotals.netIncome, e.currency, true);
-        byId("balanceRows").innerHTML = reportRows(e, ["Assets", "Liabilities", "Equity"], balanceRange)
-          + row("Current earnings", -balanceTotals.netIncome, e.currency, true);
+        // Close net income into equity so the sheet balances: A = L + Eq + NetIncome.
+        // Current earnings carries the cumulative (through the report's "to" date)
+        // profit that has not yet been posted to a permanent equity account.
+        const currentEarnings = balanceTotals.netIncome;
+        const totalLiabEquity = balanceTotals.liabilities + balanceTotals.equity + currentEarnings;
+        byId("balanceRows").innerHTML = reportRows(e, ["Assets"], balanceRange)
+          + row("Total assets", balanceTotals.assets, e.currency, true)
+          + spacerRow()
+          + reportRows(e, ["Liabilities", "Equity"], balanceRange)
+          + row("Current earnings", currentEarnings, e.currency)
+          + row("Total liabilities + equity", totalLiabEquity, e.currency, true);
         byId("recentRows").innerHTML = filteredTransactions.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12).map(txRow).join("");
       }
 
@@ -732,6 +752,10 @@ const html = `<!doctype html>
 
       function row(label, amount, currency, strong = false) {
         return '<tr><td>' + (strong ? "<strong>" : "") + esc(label) + (strong ? "</strong>" : "") + '</td><td class="amount">' + (strong ? "<strong>" : "") + money(amount, currency) + (strong ? "</strong>" : "") + '</td></tr>';
+      }
+
+      function spacerRow() {
+        return '<tr><td style="border:0;padding-top:10px"></td><td style="border:0"></td></tr>';
       }
 
       function option(value, label, selected = false) {
