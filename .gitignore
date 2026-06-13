@@ -37,3 +37,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /dist/
+
+# runtime ledger store (filesystem persistence)
+/data/
+*.tmp-*
