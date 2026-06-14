@@ -278,7 +278,72 @@ export default function ReportsView({ entityId }: { entityId: string }) {
           total={data?.apAging.total ?? emptyAging()}
         />
       </div>
+
+      <div className="panel span-6">
+        <h2>Income by payee</h2>
+        <PayeeTable
+          partyLabel="Customer / payee"
+          rows={data?.incomeByPayee.rows ?? []}
+          total={data?.incomeByPayee.total ?? "0.00"}
+        />
+      </div>
+
+      <div className="panel span-6">
+        <h2>Expenses by payee</h2>
+        <PayeeTable
+          partyLabel="Vendor / payee"
+          rows={data?.expensesByPayee.rows ?? []}
+          total={data?.expensesByPayee.total ?? "0.00"}
+        />
+      </div>
     </div>
+  );
+}
+
+function PayeeTable({
+  partyLabel,
+  rows,
+  total,
+}: {
+  partyLabel: string;
+  rows: { payee: string; display: string }[];
+  total: string;
+}) {
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>{partyLabel}</th>
+          <th className="amount">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <tr>
+            <td className="muted" colSpan={2}>
+              No activity in range
+            </td>
+          </tr>
+        ) : (
+          <>
+            {rows.map((r) => (
+              <tr key={r.payee}>
+                <td>{r.payee}</td>
+                <td className="amount">{money(r.display)}</td>
+              </tr>
+            ))}
+            <tr>
+              <td>
+                <strong>Total</strong>
+              </td>
+              <td className="amount">
+                <strong>{money(total)}</strong>
+              </td>
+            </tr>
+          </>
+        )}
+      </tbody>
+    </table>
   );
 }
 

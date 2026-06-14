@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 
 import { parse } from "./parse";
 import { serialize } from "./serialize";
-import { balanceSheet, incomeStatement, aging, totals } from "./report";
+import { balanceSheet, incomeStatement, aging, totals, byPayee } from "./report";
 import { toCents, fromCents } from "./types";
 import { parsePaste, normalizeDate } from "./import";
 
@@ -173,6 +173,23 @@ test("normalizeDate handles ISO and M/D/Y, rejects junk", () => {
   assert.equal(normalizeDate("2026-05-09"), "2026-05-09");
   assert.equal(normalizeDate("5/9/26"), "2026-05-09");
   assert.equal(normalizeDate("nonsense"), "");
+});
+
+test("byPayee groups income and expenses by payee with correct signs", () => {
+  const { ledger } = parse(SAMPLE);
+  const inc = byPayee(ledger, "Income", { from: "2026-01-01", to: "2026-12-31" });
+  // Income: Bright Dental 1250 + (split note: payment doesn't touch Income)
+  const bd = inc.rows.find((r) => r.payee === "Bright Dental");
+  assert.equal(bd?.cents, 125000); // positive revenue
+  assert.equal(inc.total, 125000);
+
+  const exp = byPayee(ledger, "Expenses", { from: "2026-01-01", to: "2026-12-31" });
+  // Expenses: Northside rent 2400 + Office Supply Co 300 = 2700
+  const north = exp.rows.find((r) => r.payee === "Northside");
+  assert.equal(north?.cents, 240000);
+  assert.equal(exp.total, 270000);
+  // sorted descending
+  assert.ok(exp.rows[0].cents >= exp.rows[exp.rows.length - 1].cents);
 });
 
 test("serialize -> parse round-trips and still balances", () => {

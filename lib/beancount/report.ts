@@ -239,3 +239,44 @@ export function aging(
   }
   return { rows, total };
 }
+
+// ---- by payee -------------------------------------------------------------
+
+export interface PayeeRow {
+  payee: string;
+  cents: number; // display sign (positive)
+}
+
+/**
+ * Group activity by payee for a given account root ("Income" or "Expenses"),
+ * over a date range. For each transaction, sums the postings hitting that root
+ * and attributes the total to the transaction's payee.
+ *
+ * Income postings are stored negative (credits), so they're negated to read as
+ * positive revenue; Expenses are stored positive and kept as-is. Rows are
+ * sorted by amount descending; zero-net payees are dropped.
+ */
+export function byPayee(
+  ledger: Ledger,
+  root: AccountType,
+  range: DateRange = {}
+): { rows: PayeeRow[]; total: number } {
+  const sign = root === "Income" ? -1 : 1;
+  const byParty = new Map<string, number>();
+  for (const tx of transactions(ledger)) {
+    if (!inRange(tx.date, range)) continue;
+    let net = 0;
+    for (const p of tx.postings) {
+      if (accountType(p.account) === root) net += p.amount;
+    }
+    if (net === 0) continue;
+    const payee = tx.payee || tx.narration || "(unknown)";
+    byParty.set(payee, (byParty.get(payee) || 0) + net * sign);
+  }
+  const rows = [...byParty.entries()]
+    .map(([payee, cents]) => ({ payee, cents }))
+    .filter((r) => r.cents !== 0)
+    .sort((a, b) => b.cents - a.cents);
+  const total = rows.reduce((s, r) => s + r.cents, 0);
+  return { rows, total };
+}

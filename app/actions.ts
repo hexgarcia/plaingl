@@ -25,8 +25,10 @@ import {
   parsePaste,
   ensureIds,
   findById,
+  byPayee,
   type ReportLine,
   type AgingRow,
+  type PayeeRow,
   type Transaction,
   type OpenDirective,
   type Ledger,
@@ -106,10 +108,20 @@ export interface ReportsDTO {
   };
   arAging: { rows: AgingRowDTO[]; total: AgingRowDTO };
   apAging: { rows: AgingRowDTO[]; total: AgingRowDTO };
+  incomeByPayee: { rows: PayeeRowDTO[]; total: string };
+  expensesByPayee: { rows: PayeeRowDTO[]; total: string };
+}
+
+export interface PayeeRowDTO {
+  payee: string;
+  display: string;
 }
 
 function lineDTO(l: ReportLine): ReportLineDTO {
   return { account: l.account, display: fromCents(l.cents), cents: l.cents };
+}
+function payeeDTO(r: PayeeRow): PayeeRowDTO {
+  return { payee: r.payee, display: fromCents(r.cents) };
 }
 function agingDTO(r: AgingRow): AgingRowDTO {
   return {
@@ -137,6 +149,8 @@ export async function getReports(
   const t = totals(ledger, range);
   const ar = aging(ledger, "Assets:AccountsReceivable", asOf);
   const ap = aging(ledger, "Liabilities:AccountsPayable", asOf, { flip: true });
+  const incPayee = byPayee(ledger, "Income", range);
+  const expPayee = byPayee(ledger, "Expenses", range);
 
   return {
     found: true,
@@ -162,6 +176,8 @@ export async function getReports(
     },
     arAging: { rows: ar.rows.map(agingDTO), total: agingDTO(ar.total) },
     apAging: { rows: ap.rows.map(agingDTO), total: agingDTO(ap.total) },
+    incomeByPayee: { rows: incPayee.rows.map(payeeDTO), total: fromCents(incPayee.total) },
+    expensesByPayee: { rows: expPayee.rows.map(payeeDTO), total: fromCents(expPayee.total) },
   };
 }
 
