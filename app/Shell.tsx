@@ -9,19 +9,20 @@ import {
   verifyLogin,
   type EntitySummary,
 } from "./actions";
+import DashboardView from "./DashboardView";
 import ReportsView from "./ReportsView";
 import DataEntryView from "./DataEntryView";
 import ChartView from "./ChartView";
 import ImportView from "./ImportView";
 import ExportView from "./ExportView";
 
-const TABS = ["Reports", "Data entry", "Chart", "Paste import", "Export"] as const;
+const TABS = ["Dashboard", "Reports", "Data entry", "Chart", "Paste import", "Export"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function Shell({ initialEntities }: { initialEntities: EntitySummary[] }) {
   const [entities, setEntities] = useState<EntitySummary[]>(initialEntities);
   const [activeId, setActiveId] = useState<string>(initialEntities[0]?.id ?? "");
-  const [tab, setTab] = useState<Tab>("Reports");
+  const [tab, setTab] = useState<Tab>("Dashboard");
   const [busy, setBusy] = useState(false);
   // Entity-creation modal
   const [showNew, setShowNew] = useState(false);
@@ -172,7 +173,7 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
           {!collapsed && (
             <>
               <h1>BeanBooks</h1>
-              <span className="pill">V. 0.0.02</span>
+              <span className="pill">V. 0.0.03</span>
             </>
           )}
           <button
@@ -246,6 +247,8 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
           <div className="panel">
             <p className="muted">Create an entity to get started.</p>
           </div>
+        ) : tab === "Dashboard" ? (
+          <DashboardView key={active.id + ":" + dataVersion} entityId={active.id} />
         ) : tab === "Reports" ? (
           <ReportsView key={active.id + ":" + dataVersion} entityId={active.id} />
         ) : tab === "Data entry" ? (

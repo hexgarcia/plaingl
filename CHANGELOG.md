@@ -7,6 +7,31 @@ The format groups changes under each version. Versions follow `0.0.0x` for now.
 
 ---
 
+## v0.0.03 — 2026-06-14
+**Author:** Developed in a separate Claude Code session (not the build chat).
+
+Dashboard home tab.
+
+### Added
+- **Dashboard** tab — now the default landing tab, first in the navigation.
+  A one-call snapshot of the active entity:
+  - **KPI cards:** Cash on hand, A/R outstanding, A/P outstanding, and
+    year-to-date Net income.
+  - **Income vs. expenses (YTD)** bar comparison with a net line.
+  - **Needs attention:** overdue receivables and payables, plus account and
+    transaction counts.
+  - **Top customers (YTD)** and **Recent activity** tables.
+  - A "books balanced ✓" health pill and ledger-error surfacing.
+
+### Notes
+- The dashboard reuses the same engine functions as the Reports tab
+  (`balanceSheet`, `totals`, `aging`, `byPayee`) so its figures always agree
+  with the reports. Balances/aging are as-of-today; P&L is year-to-date.
+- Cash is detected by account-name pattern (Bank/Cash/Checking/Savings/Petty).
+- Version label bumped to V. 0.0.03. Build clean; 13/13 engine tests pass.
+
+---
+
 ## v0.0.02 — 2026-06-14
 **Author:** Hector Garcia, CPA
 

@@ -105,6 +105,17 @@ th { color: var(--muted); font-size: 11px; text-transform: uppercase; }
   color: #7a2a1f; border-radius: 4px; margin-bottom: 12px; font-size: 13px;
 }
 
+/* Dashboard: income vs. expenses bars */
+.dash-bars { display: flex; flex-direction: column; gap: 12px; }
+.dash-bar-row { display: grid; grid-template-columns: 80px 1fr 110px; align-items: center; gap: 10px; }
+.dash-bar-label { color: var(--muted); font-size: 13px; }
+.dash-bar-track { height: 18px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.dash-bar { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+.dash-bar-income { background: var(--accent); }
+.dash-bar-expense { background: var(--bad); }
+.dash-bar-value { font-size: 13px; }
+.dash-bar-net { border-top: 1px dashed var(--line); padding-top: 10px; }
+
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
   aside { border-right: 0; border-bottom: 1px solid var(--line); }

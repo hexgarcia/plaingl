@@ -287,6 +287,95 @@ export async function getReports(
   };
 }
 
+// ---- dashboard ------------------------------------------------------------
+
+export interface DashboardDTO {
+  found: boolean;
+  asOf: string;
+  ytdFrom: string;
+  errors: { line: number; message: string }[];
+  // Top KPI cards
+  cash: string; // sum of bank/cash asset accounts, as of today
+  arTotal: string; // total outstanding A/R
+  apTotal: string; // total outstanding A/P
+  netIncomeYtd: string; // year-to-date net income
+  // Year-to-date P&L
+  revenueYtd: string;
+  expensesYtd: string;
+  // Overdue (everything past "current" in the aging buckets)
+  arOverdue: string;
+  apOverdue: string;
+  // Health + scale
+  balances: boolean;
+  txnCount: number;
+  accountCount: number;
+  // Lists
+  topCustomers: PayeeRowDTO[]; // income by payee, top 5
+  recent: LedgerTxnDTO[]; // most recent transactions
+}
+
+/**
+ * One-call snapshot for the Dashboard home tab. Balances/aging are "as of
+ * today"; P&L figures are year-to-date. Reuses the same engine functions as
+ * the Reports tab so the numbers always agree.
+ */
+export async function getDashboard(id: string): Promise<DashboardDTO | null> {
+  const text = await getLedgerText(id);
+  if (text == null) return null;
+
+  const { ledger, errors } = parse(text);
+  const asOf = today();
+  const ytdFrom = asOf.slice(0, 4) + "-01-01";
+  const ytdRange = { from: ytdFrom, to: asOf };
+
+  const bs = balanceSheet(ledger, asOf);
+  const ytd = totals(ledger, ytdRange);
+  const ar = aging(ledger, "Assets:AccountsReceivable", asOf);
+  const ap = aging(ledger, "Liabilities:AccountsPayable", asOf, { flip: true });
+  const incPayee = byPayee(ledger, "Income", ytdRange);
+
+  // Cash = asset accounts that read as bank/cash, summed from the balance sheet.
+  const cashCents = bs.assets
+    .filter((l) => /(:|^)(Bank|Cash|Checking|Savings|Petty)/i.test(l.account))
+    .reduce((s, l) => s + l.cents, 0);
+
+  const txns = ledger.directives.filter(
+    (d): d is Transaction => d.kind === "transaction"
+  );
+  const accountCount = ledger.directives.filter((d) => d.kind === "open").length;
+
+  return {
+    found: true,
+    asOf,
+    ytdFrom,
+    errors,
+    cash: fromCents(cashCents),
+    arTotal: fromCents(ar.total.total),
+    apTotal: fromCents(ap.total.total),
+    netIncomeYtd: fromCents(ytd.netIncome),
+    revenueYtd: fromCents(ytd.revenue),
+    expensesYtd: fromCents(ytd.expenses),
+    arOverdue: fromCents(ar.total.total - ar.total.current),
+    apOverdue: fromCents(ap.total.total - ap.total.current),
+    balances: bs.balances,
+    txnCount: txns.length,
+    accountCount,
+    topCustomers: incPayee.rows.slice(0, 5).map(payeeDTO),
+    recent: txns
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 8)
+      .map((t) => ({
+        date: t.date,
+        payee: t.payee,
+        narration: t.narration,
+        postings: t.postings.map((p) => ({
+          account: p.account,
+          display: fromCents(p.amount),
+        })),
+      })),
+  };
+}
+
 // ---- write path -----------------------------------------------------------
 
 /** Account names declared in the ledger (from `open` directives), sorted. */
