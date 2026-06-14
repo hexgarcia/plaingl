@@ -315,24 +315,30 @@ export interface DashboardDTO {
 }
 
 /**
- * One-call snapshot for the Dashboard home tab. Balances/aging are "as of
- * today"; P&L figures are year-to-date. Reuses the same engine functions as
- * the Reports tab so the numbers always agree.
+ * One-call snapshot for the Dashboard home tab. P&L figures (revenue,
+ * expenses, net income, income-vs-expenses, top customers) respect the chosen
+ * period. Balances and aging are computed "as of" the period end (or today if
+ * no end is given). Reuses the same engine functions as the Reports tab so the
+ * numbers always agree.
  */
-export async function getDashboard(id: string): Promise<DashboardDTO | null> {
+export async function getDashboard(
+  id: string,
+  range: { from?: string; to?: string } = {}
+): Promise<DashboardDTO | null> {
   const text = await getLedgerText(id);
   if (text == null) return null;
 
   const { ledger, errors } = parse(text);
-  const asOf = today();
-  const ytdFrom = asOf.slice(0, 4) + "-01-01";
-  const ytdRange = { from: ytdFrom, to: asOf };
+  const asOf = range.to || today();
+  // Period for P&L: default to year-to-date of `asOf` when no `from` given.
+  const periodFrom = range.from || asOf.slice(0, 4) + "-01-01";
+  const period = { from: periodFrom, to: asOf };
 
   const bs = balanceSheet(ledger, asOf);
-  const ytd = totals(ledger, ytdRange);
+  const ytd = totals(ledger, period);
   const ar = aging(ledger, "Assets:AccountsReceivable", asOf);
   const ap = aging(ledger, "Liabilities:AccountsPayable", asOf, { flip: true });
-  const incPayee = byPayee(ledger, "Income", ytdRange);
+  const incPayee = byPayee(ledger, "Income", period);
 
   // Cash = asset accounts that read as bank/cash, summed from the balance sheet.
   const cashCents = bs.assets
@@ -347,7 +353,7 @@ export async function getDashboard(id: string): Promise<DashboardDTO | null> {
   return {
     found: true,
     asOf,
-    ytdFrom,
+    ytdFrom: periodFrom,
     errors,
     cash: fromCents(cashCents),
     arTotal: fromCents(ar.total.total),

@@ -21,16 +21,34 @@ function barPct(value: string, peer: string): number {
 
 export default function DashboardView({ entityId }: { entityId: string }) {
   const [data, setData] = useState<DashboardDTO | null>(null);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [pending, startTransition] = useTransition();
 
-  useEffect(() => {
+  function load(f: string, t: string) {
     startTransition(async () => {
-      setData(await getDashboard(entityId));
+      setData(await getDashboard(entityId, { from: f || undefined, to: t || undefined }));
     });
+  }
+
+  useEffect(() => {
+    load(from, to);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityId]);
 
-  const year = data ? data.ytdFrom.slice(0, 4) : "";
+  function applyPreset(f: string, t: string) {
+    setFrom(f);
+    setTo(t);
+    load(f, t);
+  }
+
+  // Label for the period (defaults to YTD of the period-end year).
+  const periodLabel =
+    data && (from || to)
+      ? `${data.ytdFrom} → ${data.asOf}`
+      : data
+      ? `YTD ${data.ytdFrom.slice(0, 4)}`
+      : "";
 
   return (
     <div className="grid">
@@ -40,7 +58,7 @@ export default function DashboardView({ entityId }: { entityId: string }) {
             <h2 style={{ margin: 0 }}>Dashboard</h2>
             <div className="muted">
               {data
-                ? `As of ${data.asOf} · P&L is year-to-date (${year})`
+                ? `Balances as of ${data.asOf} · P&L for ${periodLabel}`
                 : pending
                 ? "Loading…"
                 : "—"}
@@ -51,6 +69,30 @@ export default function DashboardView({ entityId }: { entityId: string }) {
               {data.balances ? "books balanced ✓" : "out of balance"}
             </span>
           ) : null}
+        </div>
+
+        <div className="presets" style={{ marginTop: 12 }}>
+          {dashPresets().map((p) => (
+            <button key={p.label} onClick={() => applyPreset(p.from, p.to)} disabled={pending}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div className="dash-dates">
+          <label>
+            From
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          </label>
+          <label>
+            To
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </label>
+          <button className="primary" onClick={() => load(from, to)} disabled={pending}>
+            {pending ? "…" : "Apply"}
+          </button>
+          <button onClick={() => applyPreset("", "")} disabled={pending}>
+            Reset (YTD)
+          </button>
         </div>
 
         {data?.errors?.length ? (
@@ -74,15 +116,15 @@ export default function DashboardView({ entityId }: { entityId: string }) {
             <strong>{data ? money(data.apTotal) : "—"}</strong>
           </div>
           <div className="metric">
-            <span>Net income (YTD)</span>
+            <span>Net income</span>
             <strong>{data ? money(data.netIncomeYtd) : "—"}</strong>
           </div>
         </div>
       </div>
 
-      {/* Income vs expenses (YTD) */}
+      {/* Income vs expenses (period) */}
       <div className="panel span-6">
-        <h2>Income vs. expenses · {year}</h2>
+        <h2>Income vs. expenses · {periodLabel}</h2>
         {data ? (
           <div className="dash-bars">
             <div className="dash-bar-row">
@@ -145,7 +187,7 @@ export default function DashboardView({ entityId }: { entityId: string }) {
 
       {/* Top customers (YTD) */}
       <div className="panel span-6">
-        <h2>Top customers · {year}</h2>
+        <h2>Top customers · {periodLabel}</h2>
         <table>
           <thead>
             <tr>
@@ -213,6 +255,31 @@ export default function DashboardView({ entityId }: { entityId: string }) {
           </tbody>
         </table>
       </div>
+
+      <style>{`
+        .dash-dates { display:flex; align-items:flex-end; gap:8px; margin-top:4px; flex-wrap:wrap; }
+        .dash-dates label { display:grid; gap:4px; font-size:11px; }
+        .dash-dates input { width:150px; }
+        .dash-dates button { white-space:nowrap; }
+      `}</style>
     </div>
   );
+}
+
+/** Quick date-range presets for the dashboard, computed from today. */
+function dashPresets(): { label: string; from: string; to: string }[] {
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const q = Math.floor(m / 3);
+  const ym = (yy: number, mm: number, dd: number) => iso(new Date(Date.UTC(yy, mm, dd)));
+  const monthEnd = (yy: number, mm: number) => ym(yy, mm + 1, 0);
+  return [
+    { label: "This month", from: ym(y, m, 1), to: monthEnd(y, m) },
+    { label: "This quarter", from: ym(y, q * 3, 1), to: monthEnd(y, q * 3 + 2) },
+    { label: "YTD", from: ym(y, 0, 1), to: iso(now) },
+    { label: "This year", from: ym(y, 0, 1), to: ym(y, 11, 31) },
+    { label: "Last year", from: ym(y - 1, 0, 1), to: ym(y - 1, 11, 31) },
+  ];
 }

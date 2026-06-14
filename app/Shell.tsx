@@ -173,7 +173,7 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
           {!collapsed && (
             <>
               <h1>BeanBooks</h1>
-              <span className="pill">V. 0.0.03</span>
+              <span className="pill">V. 0.0.04</span>
             </>
           )}
           <button

@@ -7,6 +7,28 @@ The format groups changes under each version. Versions follow `0.0.0x` for now.
 
 ---
 
+## v0.0.04 — 2026-06-14
+**Author:** Hector Garcia, CPA
+
+Dashboard date range.
+
+### Added
+- **Date range on the Dashboard** — From/To inputs plus presets (This month,
+  This quarter, YTD, This year, Last year) and a Reset-to-YTD button.
+- The period now drives the P&L figures (revenue, expenses, net income),
+  the income-vs-expenses comparison, and the top-customers list. Balances and
+  aging are computed as of the period end (or today when no end is set).
+- Headers and the subheading reflect the selected period instead of a fixed
+  "year-to-date" label.
+
+### Notes
+- Defaults to year-to-date when no range is chosen (unchanged behavior).
+- Verified period figures against the sample (FY2024, Q1 2025, all-time each
+  produce correct, distinct totals). Build clean; 13/13 engine tests pass.
+- Version label bumped to V. 0.0.04.
+
+---
+
 ## v0.0.03 — 2026-06-14
 **Author:** Developed in a separate Claude Code session (not the build chat).
 
