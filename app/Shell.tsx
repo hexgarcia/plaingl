@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { addEntity, reseedSample, listEntities, type EntitySummary } from "./actions";
+import {
+  addEntity,
+  duplicateEntity,
+  listEntities,
+  getEntityProtection,
+  verifyLogin,
+  type EntitySummary,
+} from "./actions";
 import ReportsView from "./ReportsView";
 import DataEntryView from "./DataEntryView";
 import ChartView from "./ChartView";
@@ -15,8 +22,24 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
   const [entities, setEntities] = useState<EntitySummary[]>(initialEntities);
   const [activeId, setActiveId] = useState<string>(initialEntities[0]?.id ?? "");
   const [tab, setTab] = useState<Tab>("Reports");
-  const [newName, setNewName] = useState("");
-  const [reseeding, setReseeding] = useState(false);
+  const [busy, setBusy] = useState(false);
+  // Entity-creation modal
+  const [showNew, setShowNew] = useState(false);
+  const [nName, setNName] = useState("");
+  const [nOwner, setNOwner] = useState("");
+  const [nPass, setNPass] = useState("");
+  const [nErr, setNErr] = useState("");
+  // Data source: "" = start from scratch, else duplicate from that entity id.
+  const [nSource, setNSource] = useState("");
+  const [nSrcPass, setNSrcPass] = useState("");
+  const [nSrcProtected, setNSrcProtected] = useState(false);
+  // Login modal (when opening a protected entity)
+  const [loginFor, setLoginFor] = useState<EntitySummary | null>(null);
+  const [lOwner, setLOwner] = useState("");
+  const [lPass, setLPass] = useState("");
+  const [lErr, setLErr] = useState("");
+  // Entities unlocked this session (ids)
+  const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
   // Bumped after any write so the Reports view refetches when revisited.
   const [dataVersion, setDataVersion] = useState(0);
   // Theme: purely a visual skin. "default" | "pretty" | "dark". No data change.
@@ -27,6 +50,10 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
     const t = localStorage.getItem("beanbooks.theme");
     if (t === "pretty" || t === "dark" || t === "default") setTheme(t);
     setCollapsed(localStorage.getItem("beanbooks.navCollapsed") === "1");
+    // Remembered owner name prefills both modals.
+    const savedOwner = localStorage.getItem("beanbooks.owner") || "";
+    setNOwner(savedOwner);
+    setLOwner(savedOwner);
   }, []);
 
   useEffect(() => {
@@ -39,35 +66,103 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
     localStorage.setItem("beanbooks.navCollapsed", collapsed ? "1" : "0");
   }, [collapsed]);
 
+  // When the duplicate source changes, learn whether it's password-protected.
+  useEffect(() => {
+    setNSrcPass("");
+    if (!nSource) {
+      setNSrcProtected(false);
+      return;
+    }
+    getEntityProtection(nSource).then((p) => setNSrcProtected(p.protected));
+  }, [nSource]);
+
   const active = entities.find((e) => e.id === activeId);
 
-  async function handleReseed() {
-    if (
-      !window.confirm(
-        "Replace the sample company with the full 3-year demo dataset (~9,000 transactions)? This overwrites the existing Sample Company ledger."
-      )
-    )
-      return;
-    setReseeding(true);
-    const res = await reseedSample();
-    if (res.ok) {
-      const list = await listEntities();
-      setEntities(list);
-      if (res.id) setActiveId(res.id);
-      setDataVersion((v) => v + 1);
-    } else {
-      window.alert(res.error || "Reseed failed");
-    }
-    setReseeding(false);
+  function openNewModal() {
+    setNName("");
+    setNPass("");
+    setNErr("");
+    setNSource("");
+    setNSrcPass("");
+    setNOwner(localStorage.getItem("beanbooks.owner") || "");
+    setShowNew(true);
   }
 
-  async function handleAdd() {
-    const name = newName.trim();
-    if (!name) return;
-    const created = await addEntity(name);
-    setEntities((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
-    setActiveId(created.id);
-    setNewName("");
+  async function handleCreate() {
+    const name = nName.trim();
+    if (!name) {
+      setNErr("Entity name is required.");
+      return;
+    }
+    if ((nOwner.trim() && !nPass) || (!nOwner.trim() && nPass)) {
+      setNErr("To protect this entity, provide both an owner name and a password.");
+      return;
+    }
+    const owner = nOwner.trim();
+    setBusy(true);
+    setNErr("");
+    try {
+      let created: EntitySummary;
+      if (nSource) {
+        // Duplicate from an existing entity. Protected sources need a password.
+        const src = entities.find((e) => e.id === nSource);
+        const res = await duplicateEntity(nSource, name, {
+          owner: owner || undefined,
+          password: nPass || undefined,
+          sourceOwner: localStorage.getItem("beanbooks.owner") || "",
+          sourcePassword: nSrcPass || undefined,
+        });
+        if (!res.ok || !res.id) {
+          setNErr(res.error || "Could not duplicate.");
+          setBusy(false);
+          return;
+        }
+        created = { id: res.id, name: res.name || name };
+        void src;
+      } else {
+        created = await addEntity(name, owner || undefined, nPass || undefined);
+      }
+      if (owner) localStorage.setItem("beanbooks.owner", owner);
+      setEntities((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setUnlocked((s) => new Set(s).add(created.id)); // creator is unlocked
+      setActiveId(created.id);
+      setShowNew(false);
+      setDataVersion((v) => v + 1);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Selecting an entity: prompt for login if it's protected and not yet unlocked.
+  async function selectEntity(e: EntitySummary) {
+    if (unlocked.has(e.id)) {
+      setActiveId(e.id);
+      return;
+    }
+    const prot = await getEntityProtection(e.id);
+    if (!prot.protected) {
+      setUnlocked((s) => new Set(s).add(e.id));
+      setActiveId(e.id);
+      return;
+    }
+    setLErr("");
+    setLPass("");
+    setLOwner(localStorage.getItem("beanbooks.owner") || prot.owner || "");
+    setLoginFor(e);
+  }
+
+  async function handleLogin() {
+    if (!loginFor) return;
+    const res = await verifyLogin(loginFor.id, lOwner.trim(), lPass);
+    if (!res.ok) {
+      setLErr("Incorrect owner name or password.");
+      return;
+    }
+    localStorage.setItem("beanbooks.owner", lOwner.trim());
+    setUnlocked((s) => new Set(s).add(loginFor.id));
+    setActiveId(loginFor.id);
+    setLoginFor(null);
+    setLPass("");
   }
 
   return (
@@ -77,7 +172,7 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
           {!collapsed && (
             <>
               <h1>BeanBooks</h1>
-              <span className="pill">V. 0.0.01</span>
+              <span className="pill">V. 0.0.02</span>
             </>
           )}
           <button
@@ -97,26 +192,15 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
                 <button
                   key={e.id}
                   className={"entity" + (e.id === activeId ? " active" : "")}
-                  onClick={() => setActiveId(e.id)}
+                  onClick={() => selectEntity(e)}
                 >
                   {e.name}
                 </button>
               ))}
             </div>
             <div className="stack">
-              <input
-                placeholder="New business entity name"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAdd();
-                }}
-              />
-              <button className="primary" onClick={handleAdd}>
-                Add entity
-              </button>
-              <button onClick={handleReseed} disabled={reseeding}>
-                {reseeding ? "Loading…" : "Load 3-year demo data"}
+              <button className="primary" onClick={openNewModal}>
+                + New entity
               </button>
             </div>
           </>
@@ -174,6 +258,116 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
           <ExportView key={active.id + ":" + dataVersion} entityId={active.id} />
         )}
       </main>
+
+      {showNew && (
+        <div className="modal-overlay" onClick={() => !busy && setShowNew(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0 }}>New entity</h2>
+            {nErr ? <div className="notice">{nErr}</div> : null}
+            <div className="modal-grid">
+              <label>
+                Entity name
+                <input
+                  autoFocus
+                  placeholder="e.g. Acme LLC"
+                  value={nName}
+                  onChange={(e) => setNName(e.target.value)}
+                />
+              </label>
+              <label>
+                File owner (name)
+                <input
+                  placeholder="e.g. Hector Garcia"
+                  value={nOwner}
+                  onChange={(e) => setNOwner(e.target.value)}
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  type="password"
+                  placeholder="Used to open this entity later"
+                  value={nPass}
+                  onChange={(e) => setNPass(e.target.value)}
+                />
+              </label>
+              <label>
+                Start from
+                <select value={nSource} onChange={(e) => setNSource(e.target.value)}>
+                  <option value="">Scratch (empty ledger)</option>
+                  {entities.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      Duplicate: {e.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {nSource && nSrcProtected ? (
+                <label>
+                  Source password
+                  <input
+                    type="password"
+                    placeholder="Password of the entity you're copying"
+                    value={nSrcPass}
+                    onChange={(e) => setNSrcPass(e.target.value)}
+                  />
+                </label>
+              ) : null}
+            </div>
+            <p className="muted" style={{ fontSize: 12 }}>
+              Leave owner &amp; password blank for an unprotected entity. Note: this
+              is a convenience lock — the underlying file is not encrypted.
+            </p>
+            <div className="modal-actions">
+              <button onClick={() => setShowNew(false)} disabled={busy}>
+                Cancel
+              </button>
+              <button className="primary" onClick={handleCreate} disabled={busy}>
+                {busy ? "Creating…" : "Create entity"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {loginFor && (
+        <div className="modal-overlay" onClick={() => setLoginFor(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0 }}>Open “{loginFor.name}”</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              This entity is protected. Enter the owner name and password.
+            </p>
+            {lErr ? <div className="notice">{lErr}</div> : null}
+            <div className="modal-grid">
+              <label>
+                Owner name
+                <input
+                  autoFocus
+                  value={lOwner}
+                  onChange={(e) => setLOwner(e.target.value)}
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  type="password"
+                  value={lPass}
+                  onChange={(e) => setLPass(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleLogin();
+                  }}
+                />
+              </label>
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setLoginFor(null)}>Cancel</button>
+              <button className="primary" onClick={handleLogin}>
+                Open
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

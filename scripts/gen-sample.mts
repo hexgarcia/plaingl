@@ -288,7 +288,8 @@ for (let yi = 0; yi < YEARS; yi++) {
 
 // ---- serialize ------------------------------------------------------------
 const lines: string[] = [
-  'option "title" "Sample Company"',
+  'option "title" "Sample Company (Read Only)"',
+  'option "bb_readonly" "1"',
   'option "operating_currency" "USD"',
   "",
 ];

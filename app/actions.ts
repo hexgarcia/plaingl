@@ -8,10 +8,15 @@ import {
   listEntities as storeList,
   loadEntity,
   saveEntity,
-  createEntity,
   SAMPLE_ID,
   SAMPLE_LEDGER,
 } from "@/lib/store";
+import {
+  pwHash,
+  slugify,
+  READONLY_SAMPLE_ID,
+  READONLY_MSG,
+} from "./entity-helpers";
 import {
   parse,
   serialize,
@@ -54,18 +59,119 @@ export async function getLedgerText(id: string): Promise<string | null> {
 }
 
 export async function saveLedgerText(id: string, beancount: string): Promise<void> {
+  // The read-only sample can never be mutated through the normal write path.
+  if (id === READONLY_SAMPLE_ID) {
+    throw new Error(READONLY_MSG);
+  }
   await saveEntity(id, beancount);
 }
 
-export async function addEntity(name: string): Promise<EntitySummary> {
-  const id =
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 48) || "entity-" + Date.now();
-  const e = await createEntity(id, name);
-  return { id: e.id, name: e.name };
+/**
+ * Create a new entity, optionally protected by an owner name + password.
+ * The owner and a password hash are stored as ledger options; no plaintext.
+ */
+export async function addEntity(
+  name: string,
+  owner?: string,
+  password?: string
+): Promise<EntitySummary> {
+  const id = slugify(name);
+  let text =
+    'option "title" "' +
+    name.replace(/"/g, "'") +
+    '"\noption "operating_currency" "USD"\n';
+  if (owner && password) {
+    text +=
+      'option "bb_owner" "' +
+      owner.replace(/"/g, "'") +
+      '"\noption "bb_pwhash" "' +
+      pwHash(owner, password) +
+      '"\n';
+  }
+  text += "\n";
+  await saveEntity(id, text);
+  return { id, name };
+}
+
+/** Whether an entity is password-protected, and its owner name if so. */
+export async function getEntityProtection(
+  id: string
+): Promise<{ protected: boolean; owner: string }> {
+  const text = await getLedgerText(id);
+  if (text == null) return { protected: false, owner: "" };
+  const { ledger } = parse(text);
+  const hash = ledger.options.bb_pwhash || "";
+  return { protected: !!hash, owner: ledger.options.bb_owner || "" };
+}
+
+/** Verify a login attempt against the stored hash. */
+export async function verifyLogin(
+  id: string,
+  owner: string,
+  password: string
+): Promise<{ ok: boolean }> {
+  const text = await getLedgerText(id);
+  if (text == null) return { ok: false };
+  const { ledger } = parse(text);
+  const stored = ledger.options.bb_pwhash;
+  if (!stored) return { ok: true }; // unprotected
+  return { ok: pwHash(owner, password) === stored };
+}
+
+
+/**
+ * Create a new entity by duplicating an existing one. If the source is
+ * password-protected, the caller must supply the correct source owner+password.
+ * The new entity gets its own (optional) protection and a fresh title; the
+ * source's protection options are stripped, and read-only flags are removed.
+ */
+export async function duplicateEntity(
+  sourceId: string,
+  newName: string,
+  opts: {
+    owner?: string;
+    password?: string;
+    sourceOwner?: string;
+    sourcePassword?: string;
+  } = {}
+): Promise<WriteResult & { id?: string; name?: string }> {
+  const srcText = await getLedgerText(sourceId);
+  if (srcText == null) return { ok: false, error: "Source entity not found" };
+
+  const { ledger } = parse(srcText);
+
+  // If the source is protected, require its password to duplicate. The source's
+  // own stored owner name is used for the hash, so the user only types the
+  // password (or the owner, if they prefer to confirm it).
+  const srcHash = ledger.options.bb_pwhash;
+  if (srcHash) {
+    const srcOwner = (opts.sourceOwner || ledger.options.bb_owner || "").trim();
+    const ok = pwHash(srcOwner, opts.sourcePassword || "") === srcHash;
+    if (!ok)
+      return { ok: false, error: "Incorrect password for the source entity." };
+  }
+
+  const id = slugify(newName);
+  if (await getLedgerText(id))
+    return { ok: false, error: "An entity with a similar name already exists." };
+
+  // New options: fresh title, copy operating_currency, strip protection + readonly.
+  ledger.options = {
+    title: newName,
+    operating_currency: ledger.options.operating_currency || "USD",
+  };
+  if (opts.owner && opts.password) {
+    ledger.options.bb_owner = opts.owner.trim();
+    ledger.options.bb_pwhash = pwHash(opts.owner.trim(), opts.password);
+  }
+
+  const next = serialize(ledger);
+  const { errors } = parse(next);
+  if (errors.length)
+    return { ok: false, error: "Validation failed: " + errors[0].message };
+
+  await saveLedgerText(id, next);
+  return { ok: true, id, name: newName };
 }
 
 // ---- report DTOs ----------------------------------------------------------
@@ -235,6 +341,7 @@ export async function addTransaction(
   id: string,
   tx: NewTransaction
 ): Promise<WriteResult> {
+  if (id === READONLY_SAMPLE_ID) return { ok: false, error: READONLY_MSG };
   const text = await getLedgerText(id);
   if (text == null) return { ok: false, error: "Entity not found" };
 
@@ -366,6 +473,7 @@ export async function addAccount(
   openingBalance?: string,
   currency = "USD"
 ): Promise<WriteResult> {
+  if (id === READONLY_SAMPLE_ID) return { ok: false, error: READONLY_MSG };
   const text = await getLedgerText(id);
   if (text == null) return { ok: false, error: "Entity not found" };
 
@@ -416,6 +524,7 @@ export async function removeAccount(
   id: string,
   account: string
 ): Promise<WriteResult> {
+  if (id === READONLY_SAMPLE_ID) return { ok: false, error: READONLY_MSG };
   const text = await getLedgerText(id);
   if (text == null) return { ok: false, error: "Entity not found" };
 
@@ -480,6 +589,7 @@ export async function commitImport(
   text: string,
   defaults: { account: string; offset: string }
 ): Promise<WriteResult & { added?: number }> {
+  if (id === READONLY_SAMPLE_ID) return { ok: false, error: READONLY_MSG };
   const ledgerText = await getLedgerText(id);
   if (ledgerText == null) return { ok: false, error: "Entity not found" };
 
@@ -690,6 +800,7 @@ export async function updateTransaction(
   txId: string,
   data: { date: string; payee: string; narration: string; postings: EditPosting[] }
 ): Promise<WriteResult> {
+  if (id === READONLY_SAMPLE_ID) return { ok: false, error: READONLY_MSG };
   const text = await getLedgerText(id);
   if (text == null) return { ok: false, error: "Entity not found" };
 
@@ -734,6 +845,7 @@ export async function deleteTransaction(
   id: string,
   txId: string
 ): Promise<WriteResult> {
+  if (id === READONLY_SAMPLE_ID) return { ok: false, error: READONLY_MSG };
   const text = await getLedgerText(id);
   if (text == null) return { ok: false, error: "Entity not found" };
   const { ledger, errors: pre } = parse(text);
