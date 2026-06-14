@@ -6,6 +6,7 @@ import ReportsView from "./ReportsView";
 import DataEntryView from "./DataEntryView";
 import ChartView from "./ChartView";
 import ImportView from "./ImportView";
+import ExportView from "./ExportView";
 
 const TABS = ["Reports", "Data entry", "Chart", "Paste import", "Export"] as const;
 type Tab = (typeof TABS)[number];
@@ -94,13 +95,7 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
         ) : tab === "Paste import" ? (
           <ImportView entityId={active.id} onChange={() => setDataVersion((v) => v + 1)} />
         ) : (
-          <div className="panel">
-            <h2>{tab}</h2>
-            <p className="muted">
-              This tab is being migrated to the new React app. For now, the
-              classic editor remains available at <code>/</code>.
-            </p>
-          </div>
+          <ExportView key={active.id + ":" + dataVersion} entityId={active.id} />
         )}
       </main>
     </div>
