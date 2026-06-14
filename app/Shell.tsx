@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { addEntity, reseedSample, listEntities, type EntitySummary } from "./actions";
 import ReportsView from "./ReportsView";
 import DataEntryView from "./DataEntryView";
@@ -19,6 +19,18 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
   const [reseeding, setReseeding] = useState(false);
   // Bumped after any write so the Reports view refetches when revisited.
   const [dataVersion, setDataVersion] = useState(0);
+  // Pretty Mode: purely a visual skin (toggles body.pretty). No data change.
+  const [pretty, setPretty] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("beanbooks.pretty") === "1";
+    setPretty(saved);
+  }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle("pretty", pretty);
+    localStorage.setItem("beanbooks.pretty", pretty ? "1" : "0");
+  }, [pretty]);
 
   const active = entities.find((e) => e.id === activeId);
 
@@ -58,6 +70,13 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
           <h1>BeanBooks</h1>
           <span className="pill">V. 0.0.01</span>
         </div>
+        <button
+          onClick={() => setPretty((p) => !p)}
+          style={{ width: "100%", marginBottom: 16 }}
+          title="Toggle a purely visual theme — data and layout are unchanged"
+        >
+          {pretty ? "✨ Pretty Mode: On" : "✨ Pretty Mode: Off"}
+        </button>
         <div className="entity-list">
           {entities.map((e) => (
             <button

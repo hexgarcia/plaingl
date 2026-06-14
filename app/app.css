@@ -102,3 +102,136 @@ th { color: var(--muted); font-size: 11px; text-transform: uppercase; }
   .span-6 { grid-column: 1 / -1; }
   .metric-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ============================================================
+   PRETTY MODE — purely visual skin, toggled via body.pretty.
+   Overrides design tokens + adds depth, gradients, and polish.
+   No layout/data/structure changes.
+   ============================================================ */
+body.pretty {
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: #e7eaf3;
+  --paper: #ffffff;
+  --wash: #eef2fb;
+  --accent: #0ea5a4;       /* teal */
+  --accent-2: #6366f1;     /* indigo */
+  --bad: #e11d48;          /* rose */
+  --good: #059669;         /* emerald */
+  --grad: linear-gradient(135deg, #0ea5a4 0%, #6366f1 100%);
+
+  background:
+    radial-gradient(1200px 600px at 100% -10%, #dbeafe 0%, transparent 55%),
+    radial-gradient(1000px 500px at -10% 110%, #d1fae5 0%, transparent 55%),
+    var(--wash);
+  background-attachment: fixed;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Sidebar: frosted panel */
+body.pretty aside {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-right: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 1px 0 0 rgba(15, 23, 42, 0.04);
+}
+body.pretty .brand h1 {
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: -0.02em;
+  font-weight: 800;
+}
+
+/* Buttons: soft, with gradient primaries and hover lift */
+body.pretty button {
+  border-radius: 10px;
+  border-color: var(--line);
+  transition: transform 0.12s ease, box-shadow 0.18s ease, filter 0.18s ease;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+body.pretty button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.1);
+}
+body.pretty button.primary {
+  background: var(--grad);
+  border-color: transparent;
+  box-shadow: 0 4px 14px rgba(14, 165, 164, 0.35);
+}
+body.pretty .entity.active,
+body.pretty .tab.active {
+  border-color: transparent;
+  background: linear-gradient(135deg, rgba(14,165,164,0.14), rgba(99,102,241,0.14));
+  color: var(--accent);
+  font-weight: 650;
+}
+
+/* Inputs: rounder, focus ring */
+body.pretty input,
+body.pretty select {
+  border-radius: 10px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+body.pretty input:focus,
+body.pretty select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(14, 165, 164, 0.18);
+}
+
+/* Panels: elevated cards with hover lift */
+body.pretty .panel {
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 10px 30px -12px rgba(15, 23, 42, 0.18);
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+body.pretty .panel:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 40px -14px rgba(15, 23, 42, 0.24);
+}
+body.pretty .panel h2 { letter-spacing: -0.01em; }
+
+/* Metric tiles: gradient, white text */
+body.pretty .metric {
+  border: 0;
+  border-radius: 14px;
+  color: #fff;
+  background: var(--grad);
+  box-shadow: 0 8px 22px -8px rgba(99, 102, 241, 0.5);
+}
+body.pretty .metric:nth-child(2) { background: linear-gradient(135deg, #6366f1, #8b5cf6); }
+body.pretty .metric:nth-child(3) { background: linear-gradient(135deg, #0ea5a4, #22c55e); }
+body.pretty .metric:nth-child(4) { background: linear-gradient(135deg, #f59e0b, #ef4444); }
+body.pretty .metric span { color: rgba(255, 255, 255, 0.85); }
+body.pretty .metric strong { color: #fff; }
+
+/* Tables: lighter grid, hover highlight, colored amounts */
+body.pretty th {
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+body.pretty td, body.pretty th { border-bottom-color: rgba(15, 23, 42, 0.06); }
+body.pretty tbody tr { transition: background 0.12s ease; }
+body.pretty tbody tr:hover { background: rgba(14, 165, 164, 0.05); }
+body.pretty .amount { font-variant-numeric: tabular-nums; }
+
+/* Pills: gradient-tinted */
+body.pretty .pill {
+  border-color: transparent;
+  background: linear-gradient(135deg, rgba(14,165,164,0.12), rgba(99,102,241,0.12));
+  color: var(--accent);
+  font-weight: 600;
+}
+body.pretty .pill.good { background: rgba(5,150,105,0.12); color: var(--good); border-color: transparent; }
+body.pretty .pill.bad { background: rgba(225,29,72,0.1); color: var(--bad); border-color: transparent; }
+
+/* Toolbar entity title */
+body.pretty .toolbar strong { letter-spacing: -0.01em; }
