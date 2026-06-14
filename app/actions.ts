@@ -31,6 +31,9 @@ import {
   ensureIds,
   findById,
   byPayee,
+  profitAndLoss,
+  balanceSheetStatement,
+  type StatementRow,
   type ReportLine,
   type AgingRow,
   type PayeeRow,
@@ -379,6 +382,75 @@ export async function getDashboard(
           display: fromCents(p.amount),
         })),
       })),
+  };
+}
+
+// ---- QB-style statements (P&L + Balance Sheet) ----------------------------
+
+export interface StatementRowDTO {
+  kind: string;
+  label: string;
+  depth: number;
+  display: string; // formatted amount; "" for header/spacer rows
+  negative: boolean;
+  bold: boolean;
+}
+
+export interface StatementsDTO {
+  company: string;
+  asOf: string;
+  periodLabel: string; // e.g. "January 1 - June 14, 2026"
+  generatedAt: string;
+  pl: StatementRowDTO[];
+  bs: StatementRowDTO[];
+  plNetIncome: string;
+  bsBalances: boolean;
+}
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+function longDate(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return MONTHS[m - 1] + " " + d + ", " + y;
+}
+
+function rowDTO(r: StatementRow): StatementRowDTO {
+  const has = typeof r.cents === "number";
+  return {
+    kind: r.kind,
+    label: r.label,
+    depth: r.depth,
+    display: has ? fromCents(r.cents as number) : "",
+    negative: has ? (r.cents as number) < 0 : false,
+    bold: !!r.bold,
+  };
+}
+
+export async function getStatements(
+  id: string,
+  range: { from?: string; to?: string } = {}
+): Promise<StatementsDTO | null> {
+  const text = await getLedgerText(id);
+  if (text == null) return null;
+  const { ledger } = parse(text);
+
+  const asOf = range.to || today();
+  const from = range.from || asOf.slice(0, 4) + "-01-01";
+
+  const pl = profitAndLoss(ledger, { from, to: asOf });
+  const bs = balanceSheetStatement(ledger, asOf);
+
+  return {
+    company: ledger.options.title || "Company",
+    asOf,
+    periodLabel: longDate(from) + " - " + longDate(asOf),
+    generatedAt: new Date().toLocaleString("en-US"),
+    pl: pl.rows.map(rowDTO),
+    bs: bs.rows.map(rowDTO),
+    plNetIncome: fromCents(pl.netIncome),
+    bsBalances: bs.balances,
   };
 }
 

@@ -11,12 +11,13 @@ import {
 } from "./actions";
 import DashboardView from "./DashboardView";
 import ReportsView from "./ReportsView";
+import StatementView from "./StatementView";
 import DataEntryView from "./DataEntryView";
 import ChartView from "./ChartView";
 import ImportView from "./ImportView";
 import ExportView from "./ExportView";
 
-const TABS = ["Dashboard", "Reports", "Data entry", "Chart", "Paste import", "Export"] as const;
+const TABS = ["Dashboard", "Reports", "Statements", "Data entry", "Chart", "Paste import", "Export"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function Shell({ initialEntities }: { initialEntities: EntitySummary[] }) {
@@ -173,7 +174,7 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
           {!collapsed && (
             <>
               <h1>BeanBooks</h1>
-              <span className="pill">V. 0.0.04</span>
+              <span className="pill">V. 0.0.05</span>
             </>
           )}
           <button
@@ -251,6 +252,8 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
           <DashboardView key={active.id + ":" + dataVersion} entityId={active.id} />
         ) : tab === "Reports" ? (
           <ReportsView key={active.id + ":" + dataVersion} entityId={active.id} />
+        ) : tab === "Statements" ? (
+          <StatementView key={active.id + ":" + dataVersion} entityId={active.id} />
         ) : tab === "Data entry" ? (
           <DataEntryView entityId={active.id} onChange={() => setDataVersion((v) => v + 1)} />
         ) : tab === "Chart" ? (

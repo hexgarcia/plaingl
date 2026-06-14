@@ -7,6 +7,7 @@ import { serialize } from "./serialize";
 import { balanceSheet, incomeStatement, aging, totals, byPayee } from "./report";
 import { toCents, fromCents } from "./types";
 import { parsePaste, normalizeDate } from "./import";
+import { profitAndLoss, balanceSheetStatement } from "./statements";
 
 const SAMPLE = `option "title" "Acme Co"
 option "operating_currency" "USD"
@@ -190,6 +191,56 @@ test("byPayee groups income and expenses by payee with correct signs", () => {
   assert.equal(exp.total, 270000);
   // sorted descending
   assert.ok(exp.rows[0].cents >= exp.rows[exp.rows.length - 1].cents);
+});
+
+test("profitAndLoss groups sub-accounts and nets to income statement", () => {
+  const led = parse(`2026-01-01 open Assets:Bank:Checking USD
+2026-01-01 open Income:Revenue-Product:BookSales USD
+2026-01-01 open Income:Revenue-Product:SoftwareSales USD
+2026-01-01 open Income:Consulting USD
+2026-01-01 open Expenses:COGS:Purchases USD
+2026-01-01 open Expenses:Rent USD
+2026-01-01 open Income:Other:Interest USD
+
+2026-03-01 * "A" "book sale"
+  Assets:Bank:Checking          100.00 USD
+  Income:Revenue-Product:BookSales -100.00 USD
+2026-03-02 * "B" "software sale"
+  Assets:Bank:Checking          400.00 USD
+  Income:Revenue-Product:SoftwareSales -400.00 USD
+2026-03-03 * "C" "consulting"
+  Assets:Bank:Checking          1000.00 USD
+  Income:Consulting            -1000.00 USD
+2026-03-04 * "D" "purchase"
+  Expenses:COGS:Purchases        200.00 USD
+  Assets:Bank:Checking          -200.00 USD
+2026-03-05 * "E" "rent"
+  Expenses:Rent                  300.00 USD
+  Assets:Bank:Checking          -300.00 USD
+2026-03-06 * "F" "interest"
+  Assets:Bank:Checking           50.00 USD
+  Income:Other:Interest         -50.00 USD
+`).ledger;
+  const pl = profitAndLoss(led, { from: "2026-01-01", to: "2026-12-31" });
+  const find = (label: string) => pl.rows.find((r) => r.label === label);
+  // sub-account group "Revenue - Product" subtotal = 500
+  assert.equal(find("Total for Revenue - Product")?.cents, 50000);
+  // Total income = 100 + 400 + 1000 = 1500 (Other:Interest is Other Income)
+  assert.equal(find("Total for Income")?.cents, 150000);
+  // Gross profit = 1500 - 200 COGS = 1300
+  assert.equal(find("Gross Profit")?.cents, 130000);
+  // Net operating = 1300 - 300 rent = 1000
+  assert.equal(find("Net Operating Income")?.cents, 100000);
+  // Other income 50 -> Net income 1050
+  assert.equal(find("Net Income")?.cents, 105000);
+  assert.equal(pl.netIncome, 105000);
+});
+
+test("balanceSheetStatement balances with grouped accounts", () => {
+  const { ledger } = parse(SAMPLE);
+  const bs = balanceSheetStatement(ledger, "2026-12-31");
+  assert.equal(bs.balances, true);
+  assert.equal(bs.totalAssets, bs.totalLiabEquity);
 });
 
 test("serialize -> parse round-trips and still balances", () => {

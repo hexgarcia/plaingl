@@ -7,6 +7,40 @@ The format groups changes under each version. Versions follow `0.0.0x` for now.
 
 ---
 
+## v0.0.05 — 2026-06-14
+**Author:** Hector Garcia, CPA
+
+QuickBooks-style financial statements with printable / PDF output.
+
+### Added
+- **Statements tab** with a QuickBooks-style **Profit & Loss** and
+  **Balance Sheet**:
+  - **Account hierarchy & indentation** — parent accounts (from the colon
+    name, e.g. `Assets:Bank:Checking`) render as a group header with children
+    indented beneath and a bold **"Total for <group>"** subtotal.
+  - **P&L sections:** Income, Cost of Goods Sold, Gross Profit, Expenses,
+    Net Operating Income, Other Income, Other Expenses, Net Other Income,
+    Net Income — with shaded section bands and bold totals.
+  - **Balance Sheet:** Assets / Liabilities / Equity, grouped with subtotals;
+    net income closed into equity; Total Assets = Total Liabilities and Equity.
+  - Section assignment by name convention: `:COGS:`/`:CostOfGoodsSold:` →
+    Cost of Goods Sold; `:Other:` → Other Income/Expense.
+  - Right-aligned amounts, **$** on totals, **negatives in red**, a centered
+    title block (statement name, company, period), and a date-range with
+    presets.
+- **Print / Save PDF** button with a print stylesheet: hides app chrome, keeps
+  the statement on white paper, shaded bands and red negatives preserved,
+  page margins, and subtotal rows kept from breaking across pages — so the
+  browser's Print → Save as PDF closely matches a QuickBooks export.
+
+### Notes
+- Statements reuse the engine's period balances, so figures agree with the
+  Reports and Dashboard tabs.
+- New engine module `lib/beancount/statements.ts` with 2 added tests
+  (15 total, all passing). Version label → V. 0.0.05.
+
+---
+
 ## v0.0.04 — 2026-06-14
 **Author:** Hector Garcia, CPA
 
