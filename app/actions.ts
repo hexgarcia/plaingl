@@ -111,6 +111,19 @@ export async function deleteEntity(id: string): Promise<{ ok: boolean; error?: s
   return { ok: true };
 }
 
+/**
+ * Verify the admin password server-side. The password comes from the
+ * ADMIN_PASSWORD environment variable (set in Vercel → Settings → Environment
+ * Variables), so it is never in the repo or the browser bundle. Falls back to
+ * a dev default only when the env var is unset (local development).
+ */
+export async function verifyAdmin(password: string): Promise<{ ok: boolean }> {
+  const expected = process.env.ADMIN_PASSWORD;
+  // No password configured -> admin is disabled (never auto-grant).
+  if (!expected) return { ok: false };
+  return { ok: password === expected };
+}
+
 /** Whether an entity is password-protected, and its owner name if so. */
 export async function getEntityProtection(
   id: string

@@ -7,6 +7,35 @@ The format groups changes under each version. Versions follow `0.0.0x` for now.
 
 ---
 
+## v0.0.12 — 2026-06-14
+**Author:** Hector Garcia, CPA
+
+Admin password moved out of the code into a server-side environment variable.
+
+### Changed
+- **The admin password is no longer hardcoded.** It was a literal in client
+  code (visible in the public GitHub repo and the browser bundle). Now a
+  `verifyAdmin(password)` **server action** compares against the
+  `ADMIN_PASSWORD` environment variable, so the value never appears in the
+  repo or the shipped JavaScript.
+- If `ADMIN_PASSWORD` is **not set**, admin mode is **disabled** (the action
+  never grants access) — there is no fallback secret in the codebase.
+
+### Setup required
+- In Vercel → **Settings → Environment Variables**, add **`ADMIN_PASSWORD`**
+  with your chosen value (Production, and Preview/Development as desired), then
+  redeploy. Until it's set, the "Admin mode" button will reject every password.
+
+### Notes
+- This is a real improvement for secret exposure, but the broader caveat still
+  holds: the entity (company-file) password hashes live in **public** Vercel
+  Blob, and there is still no server-side login/session. Full protection needs
+  private storage + authenticated sessions (a future item).
+- Verified: no admin password string remains in source or the client bundle.
+  Version label → V. 0.0.12. Build clean; 16/16 tests pass.
+
+---
+
 ## v0.0.11 — 2026-06-14
 **Author:** Hector Garcia, CPA
 

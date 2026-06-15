@@ -8,6 +8,7 @@ import {
   getEntityProtection,
   verifyLogin,
   deleteEntity,
+  verifyAdmin,
   type EntitySummary,
 } from "./actions";
 import DashboardView from "./DashboardView";
@@ -158,14 +159,15 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
     setLoginFor(e);
   }
 
-  function toggleAdmin() {
+  async function toggleAdmin() {
     if (admin) {
       setAdmin(false);
       return;
     }
     const pw = window.prompt("Enter admin password:");
     if (pw === null) return;
-    if (pw === "qwerty12345") setAdmin(true);
+    const res = await verifyAdmin(pw);
+    if (res.ok) setAdmin(true);
     else window.alert("Incorrect admin password.");
   }
 
@@ -209,7 +211,7 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
           {!collapsed && (
             <>
               <h1>PlainGL<span style={{ opacity: 0.55, fontWeight: 600 }}>.com</span></h1>
-              <span className="pill">V. 0.0.11</span>
+              <span className="pill">V. 0.0.12</span>
             </>
           )}
           <button
