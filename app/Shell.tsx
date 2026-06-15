@@ -53,6 +53,7 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
   const [collapsed, setCollapsed] = useState(false);
   // Admin mode (UI gate; deterrent only — see deleteEntity note).
   const [admin, setAdmin] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
 
   useEffect(() => {
     const t = localStorage.getItem("beanbooks.theme");
@@ -209,10 +210,15 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
       <aside>
         <div className="brand">
           {!collapsed && (
-            <>
+            <div className="brand-head">
               <h1>PlainGL<span style={{ opacity: 0.55, fontWeight: 600 }}>.com</span></h1>
-              <span className="pill">V. 0.0.12</span>
-            </>
+              <div className="brand-sub">
+                <span className="pill">V. 0.0.13</span>
+                <button className="feedback-link" onClick={() => setShowFeedback(true)}>
+                  FEEDBACK
+                </button>
+              </div>
+            </div>
           )}
           <button
             className="nav-toggle"
@@ -436,6 +442,49 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
               <button onClick={() => setLoginFor(null)}>Cancel</button>
               <button className="primary" onClick={handleLogin}>
                 Open
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFeedback && (
+        <div className="modal-overlay" onClick={() => setShowFeedback(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0 }}>About PlainGL.com</h2>
+            <div className="feedback-body">
+              <p>
+                <strong>“PlainGL”</strong> is a trademark owned by Hector Garcia, CPA.
+                This project is currently an open source project — you can download
+                all the code for free at{" "}
+                <a
+                  href="https://github.com/hexgarcia/plaingl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  github.com/hexgarcia/plaingl
+                </a>
+                .
+              </p>
+              <p>
+                This app will continue to improve every week with Hector’s updates
+                and those from the <strong>REFRAME SOCIETY</strong> community. Hector
+                will be using this app as the ongoing use case for the{" "}
+                <strong>“AI Coding Academy for Accountants”</strong> program that
+                starts in July 2026. If you are not a current member, check out{" "}
+                <a
+                  href="https://www.hectorgarcia.com/ai"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  hectorgarcia.com/ai
+                </a>
+                .
+              </p>
+            </div>
+            <div className="modal-actions">
+              <button className="primary" onClick={() => setShowFeedback(false)}>
+                Close
               </button>
             </div>
           </div>

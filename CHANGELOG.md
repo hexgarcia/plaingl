@@ -7,6 +7,23 @@ The format groups changes under each version. Versions follow `0.0.0x` for now.
 
 ---
 
+## v0.0.13 — 2026-06-14
+**Author:** Hector Garcia, CPA
+
+FEEDBACK / About link.
+
+### Added
+- A small **FEEDBACK** link under the PlainGL.com brand. Clicking it opens an
+  "About PlainGL.com" popup with the trademark notice, the open-source repo
+  link (github.com/hexgarcia/plaingl), and information about the REFRAME
+  SOCIETY community and the "AI Coding Academy for Accountants" program
+  (hectorgarcia.com/ai). External links open in a new tab.
+
+### Notes
+- Version label → V. 0.0.13. Build clean; 16/16 tests pass.
+
+---
+
 ## v0.0.12 — 2026-06-14
 **Author:** Hector Garcia, CPA
 
