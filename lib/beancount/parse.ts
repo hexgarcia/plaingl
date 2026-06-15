@@ -1,6 +1,6 @@
 // Beancount text -> typed Ledger model.
 //
-// This is a pragmatic parser for the subset of Beancount BeanBooks emits and
+// This is a pragmatic parser for the subset of Beancount PlainGL emits and
 // consumes: options, `open`, transactions with postings + metadata, and
 // `balance` assertions. It is line-oriented and tolerant: unrecognized lines
 // are skipped and recorded as errors rather than throwing.

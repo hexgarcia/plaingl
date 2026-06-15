@@ -175,8 +175,8 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
         <div className="brand">
           {!collapsed && (
             <>
-              <h1>BeanBooks</h1>
-              <span className="pill">V. 0.0.09</span>
+              <h1>PlainGL<span style={{ opacity: 0.55, fontWeight: 600 }}>.com</span></h1>
+              <span className="pill">V. 0.0.10</span>
             </>
           )}
           <button

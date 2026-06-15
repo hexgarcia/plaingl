@@ -90,20 +90,25 @@ export default function RegisterView({
   }, [entityId]);
 
   // When arriving via "open this transaction", open its edit row once loaded.
+  // A focus with an empty txId means "filter to the account only" (e.g. from
+  // a Balance Sheet line) — the account filter is already applied via state.
   useEffect(() => {
-    if (!focusTxId || rows.length === 0) return;
-    const target = rows.find((r) => r.id === focusTxId);
-    if (target) {
-      beginEdit(target);
-      // scroll it into view after render
-      setTimeout(() => {
-        document.getElementById("reg-tx-" + focusTxId)?.scrollIntoView({ block: "center", behavior: "smooth" });
-      }, 60);
+    if (!focus) return;
+    if (focusTxId && rows.length > 0) {
+      const target = rows.find((r) => r.id === focusTxId);
+      if (target) {
+        beginEdit(target);
+        setTimeout(() => {
+          document.getElementById("reg-tx-" + focusTxId)?.scrollIntoView({ block: "center", behavior: "smooth" });
+        }, 60);
+      }
+      setFocusTxId(null);
+      onFocusConsumed?.();
+    } else if (!focusTxId) {
+      onFocusConsumed?.();
     }
-    setFocusTxId(null);
-    onFocusConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, focusTxId]);
+  }, [rows, focusTxId, focus]);
 
   function changeFilter(f: string) {
     setFilter(f);

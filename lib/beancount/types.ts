@@ -1,4 +1,4 @@
-// Core domain types for the BeanBooks Beancount engine.
+// Core domain types for the PlainGL Beancount engine.
 //
 // MONEY: all amounts are stored as integer minor units ("cents") to avoid
 // floating-point drift. A value of 125000 means 1,250.00 in a 2-decimal

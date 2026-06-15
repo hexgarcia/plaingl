@@ -1,4 +1,4 @@
-// Public surface of the BeanBooks Beancount engine.
+// Public surface of the PlainGL Beancount engine.
 export * from "./types";
 export * from "./parse";
 export * from "./report";

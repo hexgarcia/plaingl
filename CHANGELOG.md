@@ -7,6 +7,30 @@ The format groups changes under each version. Versions follow `0.0.0x` for now.
 
 ---
 
+## v0.0.10 — 2026-06-14
+**Author:** Hector Garcia, CPA
+
+App renamed to **PlainGL.com** + Balance Sheet drill-down.
+
+### Changed
+- **Renamed the app from "BeanBooks" to "PlainGL.com"** — header brand, page
+  title/metadata, and README. Storage and ledger config keys keep their legacy
+  `beanbooks.*` / `bb_*` prefixes for backward compatibility with existing
+  saved data, so no migration is needed.
+
+### Added
+- **Balance Sheet drill-down** — click any asset, liability, or equity line on
+  the Balance Sheet to open the Data entry register filtered to that account
+  (its full activity), mirroring the P&L drill-downs. Section totals
+  (Total Assets, etc.) and the Net Income line aren't clickable.
+
+### Notes
+- Reuses the cross-tab focus path; a focus with no transaction id means
+  "filter the register to this account" (no inline edit opened).
+- Build clean; 16/16 engine tests pass. Version label → V. 0.0.10.
+
+---
+
 ## v0.0.09 — 2026-06-14
 **Author:** Hector Garcia, CPA
 

@@ -166,6 +166,12 @@ export default function StatementView({
     load({ which: "pld", acctFilter: "" });
   }
 
+  // From a Balance Sheet line: open the register filtered to that account
+  // (no specific transaction — txId "" means "just filter").
+  function openAccountInRegister(account: string) {
+    onOpenTransaction?.(account, "");
+  }
+
   useEffect(() => {
     load();
     getPLAccounts(entityId).then(setPlAccounts);
@@ -363,7 +369,13 @@ export default function StatementView({
             changeMode={changeMode}
             curLabel={curLabel}
             cmpLabel={cmpLabel}
-            onDrill={which === "pl" && !comparing ? drillTo : undefined}
+            onDrill={
+              which === "pl" && !comparing
+                ? drillTo
+                : which === "bs"
+                ? openAccountInRegister
+                : undefined
+            }
           />
         ) : (
           <p className="muted" style={{ padding: 16 }}>

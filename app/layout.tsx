@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./app.css";
 
 export const metadata: Metadata = {
-  title: "BeanBooks",
-  description: "A Beancount accounting workspace.",
+  title: "PlainGL.com",
+  description: "Plain-text general ledger accounting — QuickBooks-style reports you own.",
 };
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
