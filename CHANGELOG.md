@@ -7,6 +7,24 @@ The format groups changes under each version. Versions follow `0.0.0x` for now.
 
 ---
 
+## v1.0.17 — 2026-06-15
+**Author:** Hector Garcia, CPA
+
+Everyone starts on the read-only Sample Company by default.
+
+### Changed
+- **The app now opens on "Sample Company (Read Only)" by default** for every
+  visitor, instead of whichever entity happened to sort first. If the sample
+  isn't present (unusual), it falls back to the first entity. The active entity
+  is not persisted, so each new page load / new visitor starts on the sample.
+- Consolidated the hardcoded `"sample-company"` id into a single `SAMPLE_ID`
+  constant in the Shell.
+
+### Notes
+- Version label → v1.0.17. Build clean; 16/16 engine tests pass.
+
+---
+
 ## v1.0.16 — 2026-06-15
 **Author:** Hector Garcia, CPA
 

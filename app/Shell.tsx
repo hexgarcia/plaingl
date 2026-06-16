@@ -22,9 +22,17 @@ import ExportView from "./ExportView";
 const TABS = ["Dashboard", "Reports", "Statements", "Data entry", "Chart", "Paste import", "Export"] as const;
 type Tab = (typeof TABS)[number];
 
+const SAMPLE_ID = "sample-company";
+
 export default function Shell({ initialEntities }: { initialEntities: EntitySummary[] }) {
   const [entities, setEntities] = useState<EntitySummary[]>(initialEntities);
-  const [activeId, setActiveId] = useState<string>(initialEntities[0]?.id ?? "");
+  // Everyone starts on the read-only Sample Company by default; fall back to
+  // the first entity only if the sample isn't present.
+  const [activeId, setActiveId] = useState<string>(
+    initialEntities.find((e) => e.id === SAMPLE_ID)?.id ??
+      initialEntities[0]?.id ??
+      "",
+  );
   const [tab, setTab] = useState<Tab>("Dashboard");
   const [busy, setBusy] = useState(false);
   // Entity-creation modal
@@ -213,7 +221,7 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
             <div className="brand-head">
               <h1>PlainGL</h1>
               <div className="brand-sub">
-                <span className="pill version-pill">v1.0.16</span>
+                <span className="pill version-pill">v1.0.17</span>
                 <button className="feedback-link" onClick={() => setShowFeedback(true)}>
                   FEEDBACK
                 </button>
@@ -253,7 +261,7 @@ export default function Shell({ initialEntities }: { initialEntities: EntitySumm
                   >
                     {e.name}
                   </button>
-                  {admin && e.id !== "sample-company" ? (
+                  {admin && e.id !== SAMPLE_ID ? (
                     <button
                       className="danger entity-del"
                       title={"Delete " + e.name}
