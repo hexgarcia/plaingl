@@ -7,6 +7,32 @@ The format groups changes under each version. Versions follow `0.0.0x` for now.
 
 ---
 
+## v1.0.16 — 2026-06-15
+**Author:** Hector Garcia, CPA
+
+Made company-file blob URLs unguessable (obscurity hardening).
+
+### Changed
+- **Each ledger blob now stores at a random, unguessable path** —
+  `ledgers/<id>__<128-bit-token>.beancount` instead of the old
+  `ledgers/<id>.beancount`. Previously anyone could fetch a company's data by
+  guessing its id in the URL; now the public URL can't be derived from the id.
+- **Saves reuse an entity's existing random path** (the id stays durable), and
+  a **legacy guessable file is migrated on first save** — the data is rewritten
+  to a random path and the old guessable blob is deleted so its URL stops
+  working. Listing/loading derive the id from the filename, so existing files
+  keep working with no manual migration.
+
+### Security note
+- This is **obscurity, not access control.** Vercel Blob only supports
+  `access: "public"`, so the files remain technically world-readable *by URL* —
+  they're just no longer enumerable. The entity password hashes still live in
+  public Blob. Real privacy still requires a private store + server-side auth
+  (a future item).
+- Version label → v1.0.16. Build clean; 16/16 engine tests pass.
+
+---
+
 ## v1.0.15 — 2026-06-15
 **Author:** Hector Garcia, CPA
 
