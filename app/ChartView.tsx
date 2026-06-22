@@ -116,11 +116,41 @@ export default function ChartView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityId]);
 
+  // Map common singular/typo roots to the canonical Beancount root.
+  const ROOT_ALIASES: Record<string, string> = {
+    asset: "Assets",
+    assets: "Assets",
+    liability: "Liabilities",
+    liabilities: "Liabilities",
+    equity: "Equity",
+    income: "Income",
+    revenue: "Income",
+    revenues: "Income",
+    expense: "Expenses",
+    expenses: "Expenses",
+  };
+
+  // Beancount account segments must be single CamelCase tokens (no spaces or
+  // punctuation). Turn a friendly label like "Chase Checking" into "ChaseChecking".
+  function toSegment(raw: string): string {
+    const words = raw.trim().split(/[^A-Za-z0-9]+/).filter(Boolean);
+    return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join("");
+  }
+
   function fullName(): string {
     const n = name.trim();
     if (!n) return "";
-    // If the user didn't prefix a root, prepend the selected one.
-    return ROOTS.some((r) => n.startsWith(r + ":") || n === r) ? n : root + ":" + n;
+    // Split into segments; the user may or may not have typed a root prefix.
+    const rawSegs = n.split(":").map((s) => s.trim()).filter(Boolean);
+    if (rawSegs.length === 0) return "";
+
+    // Detect a leading root (canonical, singular, or a known alias).
+    const firstLower = rawSegs[0].toLowerCase();
+    const hasRoot = firstLower in ROOT_ALIASES;
+    const rootSeg = hasRoot ? ROOT_ALIASES[firstLower] : root;
+    const bodySegs = (hasRoot ? rawSegs.slice(1) : rawSegs).map(toSegment).filter(Boolean);
+
+    return [rootSeg, ...bodySegs].join(":");
   }
 
   function submit() {
@@ -217,7 +247,7 @@ export default function ChartView({
           <label className="wide">
             Name
             <input
-              placeholder="Bank:Checking  (or full Assets:Bank:Checking)"
+              placeholder="Chase Checking  ·  Bank:Checking  ·  Assets:Bank:Checking"
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
@@ -245,6 +275,13 @@ export default function ChartView({
           <p className="muted" style={{ marginTop: 8 }}>
             Will create: <code>{fullName()}</code>
             {opening ? " · opening balance offsets to Equity:Owner" : ""}
+            <br />
+            <span style={{ fontSize: 11 }}>
+              Spaces are removed and each word capitalized (Beancount account
+              names can&apos;t contain spaces). Use <code>:</code> to nest
+              sub-accounts, e.g. <code>Bank:Chase Checking</code> →{" "}
+              <code>Assets:Bank:ChaseChecking</code>.
+            </span>
           </p>
         ) : null}
       </div>
