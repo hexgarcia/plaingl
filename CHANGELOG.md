@@ -7,6 +7,32 @@ The format groups changes under each version. Versions follow `0.0.0x` for now.
 
 ---
 
+## v1.0.21 — 2026-06-15
+**Author:** Hector Garcia, CPA
+
+Friendlier account names in the Chart of Accounts (auto-normalize).
+
+### Changed
+- **Adding an account now accepts plain-English names and normalizes them**
+  instead of rejecting them. Beancount requires each `:`-segment to be a single
+  CamelCase token with no spaces, and the root to be one of
+  Assets/Liabilities/Equity/Income/Expenses — so the form now:
+  - **Removes spaces and capitalizes each word** per segment, e.g.
+    `Chase Checking` → `ChaseChecking`.
+  - **Accepts singular/alias roots**, e.g. `Asset:` → `Assets:`,
+    `Liability:` → `Liabilities:`, `Revenue:` → `Income:`.
+  - So the reported case, **`Asset:Chase Checking`**, now creates
+    **`Assets:ChaseChecking`** cleanly.
+- The live "Will create:" preview shows the normalized name before you save,
+  and the field hint explains the space/colon rules.
+
+### Notes
+- Validation still rejects truly invalid input (no recognizable root, empty
+  segments). This only auto-fixes the safe, common cases.
+- Version label → v1.0.21. Build clean; 17/17 engine tests pass.
+
+---
+
 ## v1.0.20 — 2026-06-15
 **Author:** Hector Garcia, CPA
 

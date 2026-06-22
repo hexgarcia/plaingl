@@ -46,7 +46,9 @@
     ".next-v4434/types/**/*.ts",
     ".next-v4434/dev/types/**/*.ts",
     ".next-v14624/types/**/*.ts",
-    ".next-v14624/dev/types/**/*.ts"
+    ".next-v14624/dev/types/**/*.ts",
+    ".next-v1444/types/**/*.ts",
+    ".next-v1444/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"
